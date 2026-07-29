@@ -170,8 +170,8 @@ router.post(
     let fullResponse = "";
 
     const stream = await openai.chat.completions.create({
-      model: "gpt-5.6-luna",
-      max_completion_tokens: 4096,
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 4096,
       messages: chatMessages,
       stream: true,
     });

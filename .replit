@@ -22,4 +22,4 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.openai.com/v1"
+AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.groq.com/openai/v1"
