@@ -8,6 +8,7 @@ import SignIn from '@/pages/sign-in';
 import SignUp from '@/pages/sign-up';
 import ChatHome from '@/pages/chat-home';
 import ChatConversation from '@/pages/chat-conversation';
+import Pricing from '@/pages/pricing';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 
 const queryClient = new QueryClient();
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/sign-up" component={SignUp} />
       <Route path="/chat" component={ChatHome} />
       <Route path="/chat/:id" component={ChatConversation} />
+      <Route path="/pricing" component={Pricing} />
       <Route component={NotFound} />
     </Switch>
   );

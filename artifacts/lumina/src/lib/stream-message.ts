@@ -6,13 +6,14 @@ export async function streamMessage(
   mode: string,
   onChunk: (text: string) => void,
   onDone: () => void,
-  onError: (error: Error) => void
+  onError: (error: Error) => void,
+  context?: string,
 ) {
   try {
     const res = await fetch(`${BASE}/api/openai/conversations/${conversationId}/messages`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, mode }),
+      body: JSON.stringify({ content, mode, context }),
     });
 
     if (!res.ok) {
@@ -36,6 +37,10 @@ export async function streamMessage(
           try {
             const evt = JSON.parse(line.slice(6));
             if (evt.content) onChunk(evt.content);
+            if (evt.error) {
+              onError(new Error(evt.error));
+              return;
+            }
             if (evt.done) {
               onDone();
               return;
