@@ -15,6 +15,94 @@ import {
 
 const router: IRouter = Router();
 
+type SearchSource = {
+  title: string;
+  url: string;
+  snippet: string;
+  domain: string;
+};
+
+async function searchPublicSources(query: string): Promise<SearchSource[]> {
+  const encoded = encodeURIComponent(query.trim());
+  const sources: SearchSource[] = [];
+
+  try {
+    const response = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encoded}&limit=5&namespace=0&format=json`,
+      { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
+    );
+    if (response.ok) {
+      const data = (await response.json()) as [string, string[], string[], string[]];
+      const titles = data[1] ?? [];
+      const descriptions = data[2] ?? [];
+      const urls = data[3] ?? [];
+      titles.forEach((title, index) => {
+        if (urls[index]) {
+          sources.push({
+            title,
+            url: urls[index],
+            snippet: descriptions[index] || `Wikipedia article about ${title}.`,
+            domain: "wikipedia.org",
+          });
+        }
+      });
+    }
+  } catch {
+    // Search remains useful with the second public source when Wikipedia is unavailable.
+  }
+
+  try {
+    const response = await fetch(
+      `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
+      { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
+    );
+    if (response.ok) {
+      const data = (await response.json()) as {
+        AbstractText?: string;
+        AbstractURL?: string;
+        Heading?: string;
+        RelatedTopics?: Array<{ Text?: string; FirstURL?: string }>;
+      };
+      if (data.AbstractText && data.AbstractURL) {
+        sources.unshift({
+          title: data.Heading || query,
+          url: data.AbstractURL,
+          snippet: data.AbstractText,
+          domain: new URL(data.AbstractURL).hostname.replace(/^www\./, ""),
+        });
+      }
+      for (const topic of data.RelatedTopics ?? []) {
+        if (topic.Text && topic.FirstURL && sources.length < 6) {
+          sources.push({
+            title: topic.Text.split(" - ")[0].slice(0, 90),
+            url: topic.FirstURL,
+            snippet: topic.Text,
+            domain: new URL(topic.FirstURL).hostname.replace(/^www\./, ""),
+          });
+        }
+      }
+    }
+  } catch {
+    // Return any Wikipedia results collected above.
+  }
+
+  return sources.slice(0, 6);
+}
+
+router.get("/openai/search", async (req, res): Promise<void> => {
+  const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  if (query.length < 2) {
+    res.status(400).json({ error: "Search query must be at least 2 characters." });
+    return;
+  }
+  try {
+    const sources = await searchPublicSources(query);
+    res.json({ query, sources });
+  } catch {
+    res.status(502).json({ error: "Live search is temporarily unavailable." });
+  }
+});
+
 // GET /openai/conversations
 router.get("/openai/conversations", async (req, res): Promise<void> => {
   const rows = await db
@@ -154,9 +242,14 @@ router.post(
 
     const systemPrompt =
       modePrompts[mode ?? conv.mode ?? "chat"] ?? modePrompts["chat"];
+    const suppliedContext =
+      typeof req.body.context === "string" ? req.body.context.slice(0, 24000) : "";
+    const groundedPrompt = suppliedContext
+      ? `${systemPrompt}\n\nUse the following supplied context when it is relevant. Do not claim you searched beyond these materials. If the context is insufficient, say so.\n\n${suppliedContext}`
+      : systemPrompt;
 
     const chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: groundedPrompt },
       ...history.slice(-20).map((m) => ({
         role: m.role as "user" | "assistant",
         content: m.content,
@@ -169,19 +262,26 @@ router.post(
 
     let fullResponse = "";
 
-    const stream = await openai.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      max_tokens: 4096,
-      messages: chatMessages,
-      stream: true,
-    });
+    try {
+      const stream = await openai.chat.completions.create({
+        model: "openai/gpt-oss-120b",
+        max_tokens: 4096,
+        messages: chatMessages,
+        stream: true,
+      });
 
-    for await (const chunk of stream) {
-      const text = chunk.choices[0]?.delta?.content;
-      if (text) {
-        fullResponse += text;
-        res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content;
+        if (text) {
+          fullResponse += text;
+          res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
+        }
       }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "The AI provider is temporarily unavailable.";
+      res.write(`data: ${JSON.stringify({ error: detail })}\n\n`);
+      res.end();
+      return;
     }
 
     // Persist assistant message
