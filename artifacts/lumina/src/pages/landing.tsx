@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import { ArrowRight, Zap, Shield, Sparkles, Globe, PenLine, Languages, MessageSquare, ChevronDown } from 'lucide-react';
+import { ArrowRight, Zap, Shield, Sparkles, Globe, PenLine, Languages, MessageSquare, ChevronDown, Search, FileText, Download, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { MODES } from '@/lib/modes';
@@ -18,6 +18,9 @@ export default function Landing() {
           </div>
           <div className="flex items-center gap-4">
             <ThemeToggle />
+            <Link href="/pricing" className="hidden text-sm font-medium text-muted-foreground hover:text-foreground sm:block">
+              Pricing
+            </Link>
             <Link href="/sign-in">
               <Button variant="ghost" data-testid="link-sign-in">
                 Sign In
@@ -48,7 +51,7 @@ export default function Landing() {
             </span>
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground max-w-3xl mx-auto mb-10 leading-relaxed animate-slide-in stagger-2">
-            Lumina adapts to how you work. Chat, search the web, write, create images, translate languages—all powered by the same AI, tailored to your intent.
+            Lumina adapts to how you work. Chat, search with receipts, bring your own documents, and export the result—all powered by the same AI, with the useful parts free.
           </p>
           <div className="flex items-center justify-center gap-4 animate-slide-in stagger-3">
             <Link href="/chat">
@@ -61,6 +64,42 @@ export default function Landing() {
               <ChevronDown className="w-5 h-5 mr-2" />
               Learn More
             </Button>
+          </div>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-muted-foreground">
+            <span className="flex items-center gap-2"><Search className="h-4 w-4 text-primary" /> Source-backed Search</span>
+            <span className="flex items-center gap-2"><FileText className="h-4 w-4 text-primary" /> Document context</span>
+            <span className="flex items-center gap-2"><Download className="h-4 w-4 text-primary" /> Free exports</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Differentiators */}
+      <section className="border-y border-border bg-[#17122b] px-6 py-24 text-white">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-14 max-w-2xl">
+            <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">The Lumina difference</p>
+            <h2 className="text-4xl font-bold tracking-tight md:text-5xl">Less friction between a question and useful work.</h2>
+            <p className="mt-5 text-lg leading-relaxed text-white/65">
+              Monica’s public pricing says its free plan has a daily usage limit. Lumina takes a different approach for the core workflow: source-backed research, document context, and exports are available here without a daily meter.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              { icon: Search, eyebrow: 'Search with receipts', title: 'See where the answer came from.', text: 'Search mode pulls live public results and shows the source cards beneath the response, so you can open and inspect them.' },
+              { icon: FileText, eyebrow: 'Bring your own context', title: 'Drop a document. Keep the thread.', text: 'Attach text, Markdown, CSV, JSON, HTML, or log files and ask the model to summarize, compare, or rewrite them.' },
+              { icon: Download, eyebrow: 'Take it with you', title: 'Your work is never trapped.', text: 'Download any conversation as clean Markdown or structured JSON, and copy a URL for sharing or returning later.' },
+            ].map(({ icon: Icon, eyebrow, title, text }) => (
+              <div key={eyebrow} className="rounded-2xl border border-white/10 bg-white/[0.06] p-7 transition hover:-translate-y-1 hover:border-cyan-300/40">
+                <Icon className="h-6 w-6 text-cyan-300" />
+                <p className="mt-8 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">{eyebrow}</p>
+                <h3 className="mt-3 text-2xl font-semibold">{title}</h3>
+                <p className="mt-3 leading-relaxed text-white/60">{text}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 flex items-center gap-2 text-sm text-white/50">
+            <ExternalLink className="h-4 w-4" />
+            <span>Claims about Monica’s free tier are based on its public pricing page, checked during this build.</span>
           </div>
         </div>
       </section>

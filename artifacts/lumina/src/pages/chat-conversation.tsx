@@ -8,7 +8,7 @@ import {
   getGetOpenaiConversationQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles, Menu, X, Loader2 } from 'lucide-react';
+import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, FileText } from 'lucide-react';
 import { ConversationList } from '@/components/conversation-list';
 import { ModeSelector } from '@/components/mode-selector';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -24,6 +24,13 @@ interface TempMessage {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+}
+
+interface SearchSource {
+  title: string;
+  url: string;
+  snippet: string;
+  domain: string;
 }
 
 export default function ChatConversation() {
@@ -42,6 +49,8 @@ export default function ChatConversation() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tempMessages, setTempMessages] = useState<TempMessage[]>([]);
   const [isStreamingActive, setIsStreamingActive] = useState(false);
+  const [sources, setSources] = useState<SearchSource[]>([]);
+  const [copied, setCopied] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -67,7 +76,7 @@ export default function ChatConversation() {
     );
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, attachment?: { name: string; text: string }) => {
     if (!id) return;
 
     // Add user message immediately
@@ -104,6 +113,34 @@ export default function ChatConversation() {
         }
       );
       return;
+    }
+
+    let context = attachment
+      ? `Attached document: ${attachment.name}\n\n${attachment.text}`
+      : '';
+
+    if (selectedMode === 'search') {
+      try {
+        const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+        const response = await fetch(`${base}/api/openai/search?q=${encodeURIComponent(content)}`);
+        if (!response.ok) throw new Error('Live search is unavailable right now.');
+        const result = (await response.json()) as { sources: SearchSource[] };
+        setSources(result.sources || []);
+        const sourceContext = (result.sources || [])
+          .map((source, index) => `[Source ${index + 1}] ${source.title} (${source.url})\n${source.snippet}`)
+          .join('\n\n');
+        context = `${context ? `${context}\n\n` : ''}Live search sources:\n${sourceContext || 'No public sources were returned.'}`;
+      } catch (error) {
+        toast({
+          title: 'Search unavailable',
+          description: error instanceof Error ? error.message : 'Try again in a moment.',
+          variant: 'destructive',
+        });
+        setTempMessages((prev) => prev.slice(0, -1));
+        return;
+      }
+    } else {
+      setSources([]);
     }
 
     // All other modes: stream text response
@@ -145,8 +182,30 @@ export default function ChatConversation() {
           description: error.message,
           variant: 'destructive',
         });
-      }
+      },
+      context,
     );
+  };
+
+  const exportConversation = (format: 'markdown' | 'json') => {
+    if (!conversation) return;
+    const filename = `${conversation.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'lumina-conversation'}.${format === 'markdown' ? 'md' : 'json'}`;
+    const body = format === 'json'
+      ? JSON.stringify({ ...conversation, messages: allMessages }, null, 2)
+      : `# ${conversation.title}\n\n_${getModeById(conversation.mode).label} mode · Exported from Lumina AI_\n\n${allMessages.map((message) => `## ${message.role === 'user' ? 'You' : 'Lumina'}\n\n${message.content}`).join('\n\n')}`;
+    const blob = new Blob([body], { type: format === 'json' ? 'application/json' : 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const copyConversationLink = async () => {
+    await navigator.clipboard.writeText(window.location.href);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
   };
 
   const allMessages = [
@@ -217,7 +276,19 @@ export default function ChatConversation() {
               </div>
             )}
           </div>
-          <ModeSelector selected={selectedMode} onChange={setSelectedMode} />
+          <div className="flex items-center gap-2">
+            {conversation && (
+              <>
+                <Button variant="outline" size="sm" onClick={() => exportConversation('markdown')} className="hidden gap-2 sm:flex" data-testid="button-export-markdown">
+                  <Download className="h-3.5 w-3.5" /> Export
+                </Button>
+                <Button variant="ghost" size="icon" onClick={copyConversationLink} title="Copy conversation link" data-testid="button-copy-conversation-link">
+                  {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4" />}
+                </Button>
+              </>
+            )}
+            <ModeSelector selected={selectedMode} onChange={setSelectedMode} />
+          </div>
         </header>
 
         {/* Messages Area */}
@@ -244,6 +315,26 @@ export default function ChatConversation() {
               isStreaming={msg.isStreaming}
             />
           ))}
+          {selectedMode === 'search' && sources.length > 0 && (
+            <div className="mx-auto mt-5 w-full max-w-3xl rounded-2xl border border-primary/15 bg-primary/[0.03] p-4">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+                <Search className="h-4 w-4 text-primary" />
+                Sources used for this answer
+              </div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {sources.map((source) => (
+                  <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="group rounded-xl border border-border bg-card p-3 transition hover:border-primary/40">
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold line-clamp-1">{source.title}</span>
+                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                    </div>
+                    <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{source.snippet}</p>
+                    <span className="mt-2 block text-[10px] text-primary">{source.domain}</span>
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 

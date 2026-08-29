@@ -59,6 +59,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/OpenaiConversation"
 
+  /openai/search:
+    get:
+      operationId: searchOpenaiSources
+      tags: [openai]
+      summary: Search public sources for grounded answers
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Public source results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiSearchResponse"
+
   /openai/conversations/{id}:
     get:
       operationId: getOpenaiConversation
@@ -243,8 +262,36 @@ components:
           type: string
         mode:
           type: string
+        context:
+          type: string
+          description: Optional document or source context used to ground the response
       required:
         - content
+
+    OpenaiSearchSource:
+      type: object
+      properties:
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        snippet:
+          type: string
+        domain:
+          type: string
+      required: [title, url, snippet, domain]
+
+    OpenaiSearchResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/OpenaiSearchSource"
+      required: [query, sources]
 
     OpenaiConversationWithMessages:
       type: object
