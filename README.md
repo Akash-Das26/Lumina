@@ -11,6 +11,27 @@ Requirements:
 - PostgreSQL 14+
 - An OpenAI-compatible API key
 
+If `createdb` prints `command not found` on macOS with zsh, install PostgreSQL and add its command-line tools:
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16
+export PATH="$(brew --prefix postgresql@16)/bin:$PATH"
+```
+
+To keep that `PATH` change after restarting Terminal:
+
+```bash
+echo 'export PATH="$(brew --prefix postgresql@16)/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+You can also create the database through `psql` if that command is available:
+
+```bash
+psql postgres -c "CREATE DATABASE lumina;"
+```
+
 From the project root:
 
 ```bash
@@ -24,7 +45,13 @@ Set `DATABASE_URL`, `OPENAI_API_KEY`, and `AI_INTEGRATIONS_OPENAI_BASE_URL` in `
 pnpm db:push
 ```
 
-PostgreSQL must already be running and the database named in `DATABASE_URL` must exist. For a local database, create one with your PostgreSQL tooling (for example, `createdb lumina`) before running the command. The schema command automatically reads the root `.env`.
+PostgreSQL must already be running and the database named in `DATABASE_URL` must exist. For a local database, create it with:
+
+```bash
+createdb lumina
+```
+
+The schema command automatically reads the root `.env`.
 
 Start the API and frontend together:
 
