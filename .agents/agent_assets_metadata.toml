@@ -1,0 +1,9 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "GCfa-hNK0sZggIH_sYNk1"
+uri = "file://exports/lumina-local.zip"
+type = "unspecified"
+title = "Lumina AI — local project ZIP"
+description = "Verified local project bundle. Includes frontend, API server, shared packages, lockfile, environment template, local launcher, proxy configuration, assets, and setup README. Excludes secrets, node_modules, build output, and Git metadata."
