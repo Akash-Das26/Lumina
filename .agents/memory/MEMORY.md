@@ -1,4 +1,4 @@
 - [Groq as OpenAI-compatible backend](groq-openai-compat.md) — OPENAI_API_KEY is a Groq gsk_ key; base URL must be https://api.groq.com/openai/v1; use llama-3.3-70b-versatile model.
 - [Comparison SEO research](comparison-seo-research.md) — use official evidence and fair tradeoffs for competitor pages.
 - [Workspace recovery](workspace-recovery.md) — workflows can run while root package metadata is missing; preserve duplicate folders until ownership is clear.
-- [Standalone Lumina](standalone-lumina.md) — portable copies need frontend, API, shared packages, lockfile, env example, and a local API proxy.
+- [Lumina local workspace](standalone-lumina.md) — the root workspace is canonical and must retain a local launcher plus API proxy.
