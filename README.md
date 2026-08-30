@@ -24,6 +24,8 @@ Set `DATABASE_URL`, `OPENAI_API_KEY`, and `AI_INTEGRATIONS_OPENAI_BASE_URL` in `
 pnpm db:push
 ```
 
+PostgreSQL must already be running and the database named in `DATABASE_URL` must exist. For a local database, create one with your PostgreSQL tooling (for example, `createdb lumina`) before running the command. The schema command automatically reads the root `.env`.
+
 Start the API and frontend together:
 
 ```bash
