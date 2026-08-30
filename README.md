@@ -32,6 +32,27 @@ You can also create the database through `psql` if that command is available:
 psql postgres -c "CREATE DATABASE lumina;"
 ```
 
+On Ubuntu, install and start PostgreSQL with:
+
+```bash
+sudo apt update
+sudo apt install postgresql postgresql-contrib
+sudo systemctl enable --now postgresql
+```
+
+Create a local database user and database:
+
+```bash
+sudo -u postgres createuser --pwprompt lumina_user
+sudo -u postgres createdb -O lumina_user lumina
+```
+
+Then set `DATABASE_URL` in `.env` using the password you chose:
+
+```env
+DATABASE_URL=postgresql://lumina_user:YOUR_PASSWORD@localhost:5432/lumina
+```
+
 From the project root:
 
 ```bash
