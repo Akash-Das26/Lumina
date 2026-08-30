@@ -13,24 +13,14 @@
 # chain attacks, which have been the #1 vector for npm ecosystem compromises.
 #
 # If you absolutely need to install a package before the 1-day window has
-# passed (e.g. an urgent security bugfix), you can add it to the
-# `minimumReleaseAgeExclude` allowlist below. Only consider doing this for
-# packages released by trusted organizations with an impeccable security
-# posture (e.g. Replit packsges, react from Meta, typescript from Microsoft). Even then,
-# remove the exclusion once the 1-day window has passed.
-#
-# Example:
-#   minimumReleaseAgeExclude:
-#     - react
-#     - typescript
+# passed (e.g., an urgent security bugfix), you can add it to the
+# minimumReleaseAgeExclude allowlist below. Only consider this for packages
+# released by trusted organizations.
 #
 # ============================================================================
 minimumReleaseAge: 1440
 
 minimumReleaseAgeExclude:
-  # Exclude @replit scoped packages from the minimum release age check.
-  # These are published by Replit and trusted — the supply-chain attack vector
-  # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
 
@@ -55,9 +45,7 @@ catalog:
   drizzle-orm: ^0.45.2
   framer-motion: ^12.23.24
   lucide-react: ^0.545.0
-  # Must be this exact version because expo requires it
   react: 19.1.0
-  # Must be this exact version because expo requires it
   react-dom: 19.1.0
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
@@ -69,7 +57,6 @@ catalog:
 autoInstallPeers: false
 
 overrides:
-  # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
   "esbuild>@esbuild/freebsd-arm64": "-"
@@ -82,6 +69,7 @@ overrides:
   "esbuild>@esbuild/linux-ppc64": "-"
   "esbuild>@esbuild/linux-riscv64": "-"
   "esbuild>@esbuild/linux-s390x": "-"
+  "esbuild>@esbuild/linux-x64-musl": "-"
   "esbuild>@esbuild/netbsd-arm64": "-"
   "esbuild>@esbuild/netbsd-x64": "-"
   "esbuild>@esbuild/openbsd-arm64": "-"
@@ -95,6 +83,7 @@ overrides:
   "esbuild>@esbuild/android-arm64": '-'
   "esbuild>@esbuild/android-x64": '-'
   "esbuild>@esbuild/openharmony-arm64": '-'
+  "esbuild>@esbuild/openharmony-x64": '-'
   "lightningcss>lightningcss-android-arm64": "-"
   "lightningcss>lightningcss-darwin-arm64": "-"
   "lightningcss>lightningcss-darwin-x64": "-"
@@ -104,7 +93,7 @@ overrides:
   "lightningcss>lightningcss-linux-arm64-musl": "-"
   "lightningcss>lightningcss-linux-x64-musl": "-"
   "lightningcss>lightningcss-win32-arm64-msvc": "-"
-  "lightningcss>lightningcss-win32-x64-msvc": "-"
+  "lightningcss>lightningcss-win32-x64": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-android-arm64": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-darwin-arm64": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-darwin-x64": "-"
@@ -113,7 +102,7 @@ overrides:
   "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-gnu": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-linux-arm64-musl": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-win32-arm64-msvc": "-"
-  "@tailwindcss/oxide>@tailwindcss/oxide-win32-x64-msvc": "-"
+  "@tailwindcss/oxide>@tailwindcss/oxide-win32-x64": "-"
   "@tailwindcss/oxide>@tailwindcss/oxide-linux-x64-musl": "-"
   "rollup>@rollup/rollup-android-arm-eabi": "-"
   "rollup>@rollup/rollup-android-arm64": "-"
@@ -134,9 +123,8 @@ overrides:
   "rollup>@rollup/rollup-linux-s390x-gnu": "-"
   "rollup>@rollup/rollup-linux-x64-musl": "-"
   "rollup>@rollup/rollup-openbsd-x64": "-"
-  "rollup>@rollup/rollup-openharmony-arm64": "-"
   "rollup>@rollup/rollup-win32-arm64-msvc": "-"
-  "rollup>@rollup/rollup-win32-ia32-msvc": "-"
+  "rollup>@rollup/rollup-win32-ia32": "-"
   "rollup>@rollup/rollup-win32-x64-gnu": "-"
   "rollup>@rollup/rollup-win32-x64-msvc": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64": "-"
@@ -149,7 +137,7 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-sunos-x64": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-ia32": "-"
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
-  # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
+  # drizzle-kit uses esbuild internally on an older version that's vulnerable
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
 
