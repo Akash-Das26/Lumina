@@ -19,6 +19,7 @@ import { ModeKey, getModeById } from '@/lib/modes';
 import { streamMessage } from '@/lib/stream-message';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useSeo } from '@/lib/seo';
 
 interface TempMessage {
   role: 'user' | 'assistant';
@@ -52,6 +53,11 @@ export default function ChatConversation() {
   const [sources, setSources] = useState<SearchSource[]>([]);
   const [copied, setCopied] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  useSeo({
+    title: conversation ? `${conversation.title} — Lumina AI` : 'Conversation — Lumina AI',
+    description: 'Continue a focused Lumina AI conversation with streaming responses, source-backed Search, document context, and exports.',
+    path: id ? `/chat/${id}` : '/chat',
+  });
 
   useEffect(() => {
     if (conversation) {
@@ -208,7 +214,7 @@ export default function ChatConversation() {
     window.setTimeout(() => setCopied(false), 1800);
   };
 
-  const allMessages = [
+  const allMessages: TempMessage[] = [
     ...(conversation?.messages || []).map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
     ...tempMessages,
   ];
