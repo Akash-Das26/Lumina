@@ -49,9 +49,11 @@ The local launcher:
 To run services separately:
 
 ```bash
-pnpm dev:api
-pnpm dev:web
+PORT=8080 pnpm dev:api
+PORT=5173 BASE_PATH=/ pnpm dev:web
 ```
+
+The one-command `pnpm dev` launcher is recommended because it loads `.env`, applies the ports, and configures the API proxy automatically.
 
 ## Validate and build
 
