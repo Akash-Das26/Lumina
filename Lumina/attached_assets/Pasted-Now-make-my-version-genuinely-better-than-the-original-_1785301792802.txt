@@ -1,0 +1,34 @@
+Now make my version genuinely better than the original, not just prettier.
+Same site, same design system, same tokens and components. This is an upgrade to the
+app you just built.
+STEP 1 — FIND WHAT THE ORIGINAL IS MISSING
+Research the reference product and its closest competitors and work out where it
+actually falls short. Look at review sites, app store reviews, Reddit threads, forum
+posts, and the competitors' own feature pages. Specifically find:
+- Features users repeatedly ask for that the original does not have.
+- The complaints that come up again and again (too slow, too expensive, watermarks,
+  hard limits, no export, no batch, no free tier, clunky on mobile).
+- What every competitor offers that the original does not.
+Give me a short ranked list of the gaps you found, with a one-line note on the evidence
+for each. Be honest, do not invent complaints.
+STEP 2 — PICK THE THREE THAT MATTER
+Choose the 3 gaps with the best ratio of user demand to build effort. Prefer ones that
+are adjacent to the core feature, so they feel like a natural part of the product
+rather than bolted on. Tell me which 3 you picked and why.
+STEP 3 — BUILD THEM PROPERLY
+- Build all 3 end to end so they genuinely work, wired to a real AI model where the
+  feature calls for it. No fake results, no coming-soon placeholders, no disabled
+  buttons.
+- Make them feel native: same design system, same motion, same states. A new feature
+  must not look like a different app.
+- Anything the original charges for that you can reasonably offer free, offer free,
+  and make that obvious in the UI.
+STEP 4 — MAKE THE DIFFERENCE OBVIOUS
+- Add a section to the landing page that shows what this app does that the original
+  does not. Design it properly, no raw tables.
+- Work the new features into the hero copy and the pricing page, so a first-time
+  visitor understands the advantage in about five seconds.
+- Keep every claim accurate and checkable. Do not overstate, do not invent weaknesses
+  in the original.
+When you're done, list the 3 features you added, the evidence behind each, and where
+they now appear in the product.
