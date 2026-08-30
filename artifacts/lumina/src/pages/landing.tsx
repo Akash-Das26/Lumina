@@ -3,8 +3,15 @@ import { ArrowRight, Zap, Shield, Sparkles, Globe, PenLine, Languages, MessageSq
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { MODES } from '@/lib/modes';
+import { useSeo } from '@/lib/seo';
 
 export default function Landing() {
+  useSeo({
+    title: 'Lumina AI — the focused command center for serious thinking',
+    description: 'Lumina is a focused AI command center for chat, source-backed search, writing, translation, document context, and free conversation exports.',
+    path: '/',
+  });
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       {/* Header */}
@@ -20,6 +27,9 @@ export default function Landing() {
             <ThemeToggle />
             <Link href="/pricing" className="hidden text-sm font-medium text-muted-foreground hover:text-foreground sm:block">
               Pricing
+            </Link>
+            <Link href="/compare" className="hidden text-sm font-medium text-muted-foreground hover:text-foreground md:block">
+              Compare
             </Link>
             <Link href="/sign-in">
               <Button variant="ghost" data-testid="link-sign-in">
@@ -101,6 +111,9 @@ export default function Landing() {
             <ExternalLink className="h-4 w-4" />
             <span>Claims about Monica’s free tier are based on its public pricing page, checked during this build.</span>
           </div>
+          <Link href="/compare" className="mt-7 inline-flex items-center gap-2 text-sm font-semibold text-cyan-300 hover:text-white">
+            Compare Lumina with ChatGPT, Claude, Perplexity, and more <ArrowRight className="h-4 w-4" />
+          </Link>
         </div>
       </section>
 
@@ -250,6 +263,7 @@ export default function Landing() {
             <span className="font-semibold text-foreground">Lumina</span>
           </div>
           <p>Built for people who think seriously. © 2024 Lumina AI.</p>
+          <Link href="/compare" className="mt-3 inline-block text-primary hover:underline">AI assistant comparisons</Link>
         </div>
       </footer>
     </div>

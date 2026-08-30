@@ -4,8 +4,15 @@ import { Sparkles, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useSeo } from '@/lib/seo';
 
 export default function SignIn() {
+  useSeo({
+    title: 'Sign in to Lumina AI',
+    description: 'Sign in to your Lumina AI workspace and continue your conversations.',
+    path: '/sign-in',
+  });
+
   const [, setLocation] = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

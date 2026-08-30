@@ -1,0 +1,33 @@
+Now add a full set of comparison pages so the site can rank on Google and pull in
+search traffic. These are part of the SAME site — reuse the exact design system,
+tokens, fonts, and components from the app you just built. They must look every bit
+as designed as the app, never like a bolted-on SEO afterthought.
+RESEARCH FIRST
+- Take the original brand at the URL I gave you and research the market to find 5 to 8
+  real competing or alternative products in the same category. Pick the closest and
+  most-searched ones.
+THEN BUILD
+- A comparison hub at /compare listing every comparison with a short blurb and a link.
+- One comparison page per competitor at a clean slug like /compare/[competitor-name].
+- One page comparing THIS app against the original brand at the URL.
+MAKE EVERY COMPARISON PAGE RANK
+- A keyword-targeted page title and H1, e.g.
+  "[This app] vs [Competitor]: features, pricing, and which is better in 2026".
+- A unique meta description and Open Graph tags per page.
+- A side-by-side comparison built as a DESIGNED component (not a raw HTML table):
+  key features, pricing, free option, speed, accuracy, ease of use, and pros/cons for
+  each. Use the design system — clear column hierarchy, readable on mobile, tasteful
+  use of the accent color and check/cross marks.
+- A short honest intro and a clear verdict. Favor this app where it genuinely wins, but
+  stay fair and accurate. Do NOT invent fake weaknesses — dishonest comparisons get
+  penalized by Google and kill trust.
+- An FAQ answering what people actually type, e.g. "Is [this app] a good [Competitor]
+  alternative?" and "[Competitor] vs [this app], which is better?".
+- Structured data (Product, FAQPage, BreadcrumbList) so pages can earn rich results.
+- A clear, well-designed CTA on every page sending the reader to sign up and try the
+  core feature.
+- Internal links from the landing page to the hub, and between the comparison pages.
+Target the searches people actually make: "[brand] alternative", "[brand] vs
+[competitor]", "best [category] tool", and "[competitor] alternatives".
+Also tidy up SEO across the whole site: semantic HTML, fast load, a descriptive title
+and meta description on every page, a sitemap, and clean readable URLs.
