@@ -12,5 +12,5 @@ description = "Verified local project bundle. Includes frontend, API server, sha
 id = "5yu5kGY4tdDhJDHuDU3z6"
 uri = "file://exports/lumina-ai-github.zip"
 type = "unspecified"
-title = "Lumina AI — complete GitHub project"
-description = "Complete current project source archive, ready to extract and push to GitHub. Includes frontend, API server, mockup sandbox, shared libraries, assets, workspace lockfile, local launcher, environment template, Replit configuration, and README. Excludes node_modules, build output, caches, Git metadata, internal agent files, logs, and real environment files."
+title = "Lumina AI — complete GitHub project (verified)"
+description = "Final complete source archive, verified from a clean extraction with pnpm install --frozen-lockfile, typecheck, production build, and local pnpm dev. Includes all application source, frontend, API, mockup sandbox, shared libraries, assets, lockfile, local launcher, proxy, environment template, README, and Replit configuration. Excludes node_modules, build output, caches, Git metadata, internal agent files, logs, and real environment files."

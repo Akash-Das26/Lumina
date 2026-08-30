@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const projectRoot = resolve(import.meta.dirname, '..');
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const envPath = resolve(projectRoot, '.env');
 
 function loadEnvFile() {
