@@ -72,7 +72,14 @@ PostgreSQL must already be running and the database named in `DATABASE_URL` must
 createdb lumina
 ```
 
-The schema command automatically reads the root `.env`.
+If you followed the Ubuntu user/database setup above, use `lumina_user` and its password in `DATABASE_URL`, then verify the connection before pushing the schema:
+
+```bash
+psql "$DATABASE_URL" -c "select 1;"
+pnpm db:push
+```
+
+The schema command automatically reads the root `.env`. Do not start `pnpm dev` until `pnpm db:push` succeeds; otherwise the frontend can start while database-backed API routes return errors because the tables are missing.
 
 Start the API and frontend together:
 
