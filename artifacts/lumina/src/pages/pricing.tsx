@@ -1,6 +1,7 @@
 import { Link } from 'wouter';
 import { ArrowLeft, Check, Download, FileText, Search, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useSeo } from '@/lib/seo';
 
 const included = [
   'All five focused AI modes',
@@ -11,6 +12,12 @@ const included = [
 ];
 
 export default function Pricing() {
+  useSeo({
+    title: 'Lumina AI pricing — useful AI tools that stay free',
+    description: 'See what Lumina includes for free: five AI modes, source-backed Search, text-file context, and Markdown or JSON conversation exports.',
+    path: '/pricing',
+  });
+
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">
       <header className="border-b border-border/60">

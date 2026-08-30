@@ -10,8 +10,15 @@ import { Button } from '@/components/ui/button';
 import { ModeKey, MODES } from '@/lib/modes';
 import { Menu, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSeo } from '@/lib/seo';
 
 export default function ChatHome() {
+  useSeo({
+    title: 'Lumina AI workspace — choose a mode and start thinking',
+    description: 'Start a Lumina AI conversation in Chat, Search, Write, Artist, or Translate mode.',
+    path: '/chat',
+  });
+
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const createConv = useCreateOpenaiConversation();
