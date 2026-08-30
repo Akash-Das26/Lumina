@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-base-3.13"]
 
 [deployment]
 router = "application"
@@ -23,3 +23,15 @@ timeoutMs = 20000
 
 [userenv.shared]
 AI_INTEGRATIONS_OPENAI_BASE_URL = "https://api.groq.com/openai/v1"
+
+[[ports]]
+localPort = 8080
+externalPort = 80
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 25762
+externalPort = 3000
