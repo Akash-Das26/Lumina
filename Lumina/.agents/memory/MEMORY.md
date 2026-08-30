@@ -1,2 +1,0 @@
-- [Groq as OpenAI-compatible backend](groq-openai-compat.md) — OPENAI_API_KEY is a Groq gsk_ key; base URL must be https://api.groq.com/openai/v1; use llama-3.3-70b-versatile model.
-- [Comparison SEO research](comparison-seo-research.md) — use official evidence and fair tradeoffs for competitor pages.

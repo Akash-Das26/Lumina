@@ -51,6 +51,7 @@ const web = spawn(
     env: {
       ...sharedEnv,
       NODE_ENV: 'development',
+      LOCAL_DEV: 'true',
       PORT: webPort,
       BASE_PATH: '/',
       API_URL: process.env.API_URL || `http://localhost:${apiPort}`,
