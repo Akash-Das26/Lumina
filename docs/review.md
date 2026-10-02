@@ -4,6 +4,28 @@ Session-by-session log of work. New entries go at the TOP.
 
 ---
 
+### Session 4 - 2026-10-02
+- **Goal:** Verify the BUG-002 502 path live against a running dev server with an unreachable provider URL.
+- **Work done:**
+  - No usable local Postgres credentials (no .env, peer auth failed, sudo password-gated), so spun up an ephemeral PostgreSQL 18 on port 5433 (data + socket under tmp/, trust auth, deleted after).
+  - Wrote a throwaway .env (bad provider `AI_INTEGRATIONS_OPENAI_BASE_URL=http://127.0.0.1:9`), ran `pnpm db:push` — schema applied cleanly including the new nullable userId and indexes.
+  - Launched `pnpm dev`; verified live: healthz, register (201 + HttpOnly cookie), login, create conversation, **502 JSON** (`{"error":"Connection error."}`) for the message send, 401 without a session.
+  - Extended live checks to BUG-003: per-user isolation (second user sees `[]`, gets 404 on another's conversation) and pagination.
+  - **Found BUG-004 live:** conversations page 2 with `cursor=3` repeated ids 5,4 instead of returning 2,1 — cursor filter used `gt` on a `desc`-ordered list. Fixed with `lt` (artifacts/api-server/src/routes/openai/index.ts); messages route (`asc`+`gt`) was already correct.
+  - Added artifacts/api-server/test/integration.pagination.spec.ts — real-DB integration tests, gated on `E2E_DATABASE_URL` (skip in plain CI; explicit target always wins so a developer's own DATABASE_URL is never touched).
+  - Re-verified live after restart: pages walk 5,4,3 → 2,1 → empty; messages paginate ascending; 502 still clean. Committed 67cfa86.
+  - Cleanup: stopped dev stack + ephemeral Postgres, removed tmp/ artifacts, restored template-state .env.
+- **Features touched:** Authentication (backend) — pagination fix; Smoke tests — new integration suite.
+- **Bugs fixed / found:** BUG-004 found (live verification) and fixed; BUG-002 and BUG-003 verified live.
+- **Decisions made:**
+  - Ephemeral Postgres in-project instead of touching the user's real instance (no credentials available; isolation guaranteed).
+  - Integration tests env-gated rather than always-on: keeps `pnpm test` hermetic; set `E2E_DATABASE_URL` to run them.
+  - Env-precedence in the spec: `E2E_DATABASE_URL` overwrites DATABASE_URL so a developer's real DB can never be polluted.
+- **Tests run:** api-server 18 passed + 2 skipped (no E2E target); 2 passed with E2E target; full typecheck green.
+- **Left unfinished:** commits not yet pushed (5 ahead of origin).
+- **Next steps:** push; consider rate-limiting auth endpoints; add sign-out UI.
+- **Operational note:** `pkill -f vite` kills the invoking shell itself (pattern matches its own command line); use `kill $(pgrep -f '[v]ite')` instead.
+
 ### Session 3 - 2026-10-02
 - **Goal:** Start BUG-003 (pagination + ownership scoping). User chose "full auth now" + backward-compatible limit/cursor pagination, expanding scope to a complete authentication feature.
 - **Work done:**
