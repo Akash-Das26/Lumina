@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, gt, count } from "drizzle-orm";
+import { and, asc, desc, eq, gt, lt, count } from "drizzle-orm";
 import { db, conversations, messages } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { generateImageBuffer } from "@workspace/integrations-openai-ai-server/image";
@@ -119,13 +119,16 @@ router.get("/openai/conversations", async (req, res): Promise<void> => {
   }
   const { limit, cursor } = parsed.data;
 
+  // Cursor = id of the last item on the previous page. The list is newest
+  // first (desc), so the next page holds ids SMALLER than the cursor
+  // (BUG-004: gt() here made every page repeat the first one).
   const rows = await db
     .select()
     .from(conversations)
     .where(
       and(
         eq(conversations.userId, req.userId),
-        cursor ? gt(conversations.id, cursor) : undefined,
+        cursor ? lt(conversations.id, cursor) : undefined,
       ),
     )
     .orderBy(desc(conversations.id))
