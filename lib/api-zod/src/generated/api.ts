@@ -18,8 +18,74 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
- * @summary List all conversations
+ * @summary Create an account and start a session
  */
+export const registerAuthBodyPasswordMin = 8;
+
+
+
+export const RegisterAuthBody = zod.object({
+  "name": zod.string(),
+  "email": zod.email(),
+  "password": zod.string().min(registerAuthBodyPasswordMin)
+})
+
+export const RegisterAuthResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.email(),
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Sign in and start a session
+ */
+export const loginAuthBodyPasswordMin = 8;
+
+
+
+export const LoginAuthBody = zod.object({
+  "email": zod.email(),
+  "password": zod.string().min(loginAuthBodyPasswordMin)
+})
+
+export const LoginAuthResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.email(),
+  "name": zod.string()
+})
+
+
+/**
+ * @summary Clear the session cookie
+ */
+export const LogoutAuthResponse = zod.void()
+
+
+/**
+ * @summary Get the signed-in user
+ */
+export const GetAuthMeResponse = zod.object({
+  "id": zod.number(),
+  "email": zod.email(),
+  "name": zod.string()
+})
+
+
+/**
+ * @summary List the signed-in user's conversations (newest first)
+ */
+export const listOpenaiConversationsQueryLimitDefault = 50;
+export const listOpenaiConversationsQueryLimitMax = 200;
+
+
+
+
+export const ListOpenaiConversationsQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listOpenaiConversationsQueryLimitMax).default(listOpenaiConversationsQueryLimitDefault),
+  "cursor": zod.coerce.number().min(1).optional().describe('Id of the last conversation on the previous page')
+})
+
 export const ListOpenaiConversationsResponseItem = zod.object({
   "id": zod.number(),
   "title": zod.string(),
@@ -42,6 +108,24 @@ export const CreateOpenaiConversationResponse = zod.object({
   "title": zod.string(),
   "mode": zod.string(),
   "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Search public sources for grounded answers
+ */
+export const SearchOpenaiSourcesQueryParams = zod.object({
+  "q": zod.coerce.string()
+})
+
+export const SearchOpenaiSourcesResponse = zod.object({
+  "query": zod.string(),
+  "sources": zod.array(zod.object({
+  "title": zod.string(),
+  "url": zod.url(),
+  "snippet": zod.string(),
+  "domain": zod.string()
+}))
 })
 
 
@@ -78,10 +162,21 @@ export const DeleteOpenaiConversationResponse = zod.void()
 
 
 /**
- * @summary List messages in a conversation
+ * @summary List messages in a conversation (oldest first)
  */
 export const ListOpenaiMessagesParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const listOpenaiMessagesQueryLimitDefault = 200;
+export const listOpenaiMessagesQueryLimitMax = 1000;
+
+
+
+
+export const ListOpenaiMessagesQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(listOpenaiMessagesQueryLimitMax).default(listOpenaiMessagesQueryLimitDefault),
+  "cursor": zod.coerce.number().min(1).optional().describe('Id of the last message on the previous page')
 })
 
 export const ListOpenaiMessagesResponseItem = zod.object({
@@ -103,7 +198,8 @@ export const SendOpenaiMessageParams = zod.object({
 
 export const SendOpenaiMessageBody = zod.object({
   "content": zod.string(),
-  "mode": zod.string().optional()
+  "mode": zod.string().optional(),
+  "context": zod.string().optional().describe('Optional document or source context used to ground the response')
 })
 
 export const SendOpenaiMessageResponse = zod.unknown()

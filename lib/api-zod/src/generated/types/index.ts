@@ -6,7 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from './authCredentials';
+export * from './authRegisterInput';
+export * from './authUser';
 export * from './healthStatus';
+export * from './listOpenaiConversationsParams';
+export * from './listOpenaiMessagesParams';
 export * from './openaiConversation';
 export * from './openaiConversationInput';
 export * from './openaiConversationWithMessages';
@@ -16,4 +21,7 @@ export * from './openaiImageInputSize';
 export * from './openaiImageOutput';
 export * from './openaiMessage';
 export * from './openaiMessageInput';
+export * from './openaiSearchResponse';
+export * from './openaiSearchSource';
 export * from './openaiStats';
+export * from './searchOpenaiSourcesParams';

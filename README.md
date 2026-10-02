@@ -60,7 +60,7 @@ pnpm install
 cp .env.example .env
 ```
 
-Set `DATABASE_URL`, `OPENAI_API_KEY`, and `AI_INTEGRATIONS_OPENAI_BASE_URL` in `.env`. Then initialize the schema:
+Set `DATABASE_URL`, `OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`, and `SESSION_SECRET` in `.env` (generate a session secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Then initialize the schema:
 
 ```bash
 pnpm db:push

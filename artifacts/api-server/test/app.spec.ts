@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
 process.env.OPENAI_API_KEY ??= "test-key";
 process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ??= "http://127.0.0.1:9";
+process.env.SESSION_SECRET ??= "test-session-secret-0123456789abcdef";
 
 const { startTestServer } = await import("./helpers/server");
 
@@ -15,6 +16,7 @@ vi.mock("../src/lib/db", () => ({
 }));
 
 const { default: app } = await import("../src/app");
+const { createSessionToken } = await import("../src/lib/session");
 const { db } = await import("../src/lib/db");
 
 type TestServer = Awaited<ReturnType<typeof startTestServer>>;
@@ -58,10 +60,18 @@ describe("api-server smoke", () => {
 
   it("POST /api/openai/conversations returns 400 for invalid body", async () => {
     const res = await server.request("POST", "/api/openai/conversations", {
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        cookie: `lumina_session=${createSessionToken(1)}`,
+      },
       body: JSON.stringify({ title: 123 }),
       });
     expect(res.status).toBe(400);
+  });
+
+  it("requires authentication for conversation routes", async () => {
+    const res = await server.request("GET", "/api/openai/conversations");
+    expect(res.status).toBe(401);
   });
 
   it("sends security headers via helmet", async () => {

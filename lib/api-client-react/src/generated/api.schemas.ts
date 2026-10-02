@@ -9,6 +9,25 @@ export interface HealthStatus {
   status: string;
 }
 
+export interface AuthCredentials {
+  email: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export interface AuthRegisterInput {
+  name: string;
+  email: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+}
+
 export interface OpenaiConversation {
   id: number;
   title: string;
@@ -32,6 +51,20 @@ export interface OpenaiConversationInput {
 export interface OpenaiMessageInput {
   content: string;
   mode?: string;
+  /** Optional document or source context used to ground the response */
+  context?: string;
+}
+
+export interface OpenaiSearchSource {
+  title: string;
+  url: string;
+  snippet: string;
+  domain: string;
+}
+
+export interface OpenaiSearchResponse {
+  query: string;
+  sources: OpenaiSearchSource[];
 }
 
 export interface OpenaiConversationWithMessages {
@@ -69,4 +102,34 @@ export interface OpenaiStats {
 export interface OpenaiError {
   error: string;
 }
+
+export type ListOpenaiConversationsParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * Id of the last conversation on the previous page
+ * @minimum 1
+ */
+cursor?: number;
+};
+
+export type SearchOpenaiSourcesParams = {
+q: string;
+};
+
+export type ListOpenaiMessagesParams = {
+/**
+ * @minimum 1
+ * @maximum 1000
+ */
+limit?: number;
+/**
+ * Id of the last message on the previous page
+ * @minimum 1
+ */
+cursor?: number;
+};
 

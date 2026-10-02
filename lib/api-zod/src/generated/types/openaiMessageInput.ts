@@ -9,4 +9,6 @@
 export interface OpenaiMessageInput {
   content: string;
   mode?: string;
+  /** Optional document or source context used to ground the response */
+  context?: string;
 }

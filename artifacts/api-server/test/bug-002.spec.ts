@@ -6,6 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
 process.env.OPENAI_API_KEY ??= "test-key";
 process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ??= "http://127.0.0.1:9";
+process.env.SESSION_SECRET ??= "test-session-secret-0123456789abcdef";
 
 const { createChainMock, openaiCreateMock } = vi.hoisted(() => {
   const openaiCreateMock = vi.fn();
@@ -43,6 +44,7 @@ vi.mock("@workspace/integrations-openai-ai-server", () => ({
 const { startTestServer } = await import("./helpers/server");
 
 const { default: app } = await import("../src/app");
+const { createSessionToken } = await import("../src/lib/session");
 const { db } = await import("@workspace/db");
 
 type TestServer = Awaited<ReturnType<typeof startTestServer>>;
@@ -65,7 +67,10 @@ beforeEach(() => {
 
 function postMessage(server: TestServer) {
   return server.request("POST", "/api/openai/conversations/1/messages", {
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      cookie: `lumina_session=${createSessionToken(1)}`,
+    },
     body: JSON.stringify({ content: "hello", mode: "chat" }),
   });
 }
