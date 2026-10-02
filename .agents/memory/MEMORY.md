@@ -1,3 +1,4 @@
+- [No Codebuff footer in commits](no-commit-footer.md) — commit messages are plain; never append "Generated with Codebuff" or agent attribution footers.
 - [Groq as OpenAI-compatible backend](groq-openai-compat.md) — OPENAI_API_KEY is a Groq gsk_ key; base URL must be https://api.groq.com/openai/v1; use llama-3.3-70b-versatile model.
 - [Comparison SEO research](comparison-seo-research.md) — use official evidence and fair tradeoffs for competitor pages.
 - [Workspace recovery](workspace-recovery.md) — workflows can run while root package metadata is missing; preserve duplicate folders until ownership is clear.
