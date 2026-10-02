@@ -17,7 +17,14 @@ export async function streamMessage(
     });
 
     if (!res.ok) {
-      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      let detail = `HTTP ${res.status}: ${res.statusText}`;
+      try {
+        const data = (await res.json()) as { error?: unknown } | null;
+        if (typeof data?.error === 'string' && data.error) detail = data.error;
+      } catch {
+        // Non-JSON error body; keep the generic HTTP message.
+      }
+      throw new Error(detail);
     }
 
     const reader = res.body!.getReader();
