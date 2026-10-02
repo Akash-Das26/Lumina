@@ -28,7 +28,7 @@ Living document: update statuses and add entries whenever features change. Never
 | Dev launcher + API proxy | Done | scripts/dev-local.mjs | 2026-10-02 |
 | Shared API client + fetch layer | Done | lib/api-client-react/src/custom-fetch.ts, lib/api-client-react/src/generated/ | 2026-10-02 |
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
-| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-02 |
+| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-02 |
 
 ## Feature details
 
@@ -191,8 +191,8 @@ Server-side provider client (chat, image, audio, batch).
 - **Dates:** added 2026-07-29, last modified 2026-10-02
 
 ### Smoke tests
-Vitest suites for the API and the fetch layer.
+Vitest suites for the API and the fetch layer, plus env-gated DB integration tests.
 - **Status:** Done
-- **How it works:** api-server boots the real Express app on an ephemeral port with db mocked (no Postgres needed); asserts healthz, 413 body limit, CORS blocking, 400 validation, helmet headers. api-client-react unit-tests `customFetch` behavior.
-- **Key files:** artifacts/api-server/test/app.spec.ts, artifacts/api-server/test/helpers/server.ts, artifacts/api-server/vitest.config.ts, lib/api-client-react/test/custom-fetch.spec.ts, lib/api-client-react/vitest.config.ts
-- **Dates:** added 2026-10-02, last modified 2026-10-02
+- **How it works:** api-server boots the real Express app on an ephemeral port with db mocked (no Postgres needed); asserts healthz, 413 body limit, CORS blocking, 400 validation, helmet headers, auth flows and SSE failure paths. integration.pagination.spec.ts additionally runs against a real Postgres when `E2E_DATABASE_URL` is set (skipped otherwise) and asserts cursor pagination order/monotonicity/no-repeats plus per-user isolation. api-client-react unit-tests `customFetch` behavior.
+- **Key files:** artifacts/api-server/test/app.spec.ts, auth.spec.ts, bug-002.spec.ts, integration.pagination.spec.ts, artifacts/api-server/test/helpers/server.ts, artifacts/api-server/vitest.config.ts, lib/api-client-react/test/custom-fetch.spec.ts, lib/api-client-react/vitest.config.ts
+- **Dates:** added 2026-10-02, last modified 2026-10-02 (Session 4: integration suite)

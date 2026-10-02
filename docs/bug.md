@@ -9,6 +9,7 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-001 | Vulnerable transitive dependencies (18 advisories incl. 14 high in dev chain, qs prod) | Medium | Fixed | Audit 1 (2026-10-02) | 2026-10-02 (Session 1) |
 | BUG-002 | SSE provider errors stream as mid-stream event instead of HTTP error status | Low | Fixed | Audit 1 / Session 1 review of routes/openai/index.ts | 2026-10-02 (Session 2) |
 | BUG-003 | No DB pagination and no per-user ownership on conversations/messages | Low | Fixed | Audit 1 review of routes + db schema | 2026-10-02 (Session 3) |
+| BUG-004 | Conversations cursor pagination repeated the first page (gt vs lt on desc order) | Medium | Fixed | Session 4 live verification (2026-10-02) | 2026-10-02 (Session 4) |
 
 ## Open
 
@@ -19,6 +20,16 @@ _(none)_
 _(none)_
 
 ## Fixed
+
+### BUG-004 — Conversations cursor pagination repeated the first page (gt vs lt on desc order)
+- **Severity / Status:** Medium / Fixed (2026-10-02, Session 4)
+- **Where:** artifacts/api-server/src/routes/openai/index.ts — GET /openai/conversations cursor filter.
+- **Symptom:** with newest-first ordering (`orderBy(desc(id))`), page 2 requested with `cursor=3` returned ids 5,4 — the same rows as page 1 — instead of the older rows 2,1. Any paginated consumer would loop on page 1 forever.
+- **Root cause:** the cursor filter used `gt(conversations.id, cursor)` while the sort is descending; the window `id > cursor` selects *newer* rows, which were already returned. The messages route (ascending + `gt`) was correct.
+- **How found:** live end-to-end verification against a real Postgres on :5433 (mocked unit tests asserted handler logic, not real SQL ordering — see bug.md BUG-001 lesson and Session 4).
+- **Fix applied:** filter changed to `lt(conversations.id, cursor)` with a comment explaining the desc/cursor relationship. Verified live: pages walk 5,4,3 → 2,1 → empty with no repeats. New integration suite artifacts/api-server/test/integration.pagination.spec.ts (env-gated on E2E_DATABASE_URL) asserts descending order, cross-page monotonicity and no repeated ids. Commit 67cfa86.
+- **Verified by:** live curl against running dev server + integration tests (2 passed with real DB; skipped without).
+- **Related:** BUG-003 (introduced by its pagination fix); Session 4.
 
 ### BUG-003 — No DB pagination and no per-user ownership on conversations/messages
 - **Severity / Status:** Low / Fixed (2026-10-02, Session 3) — expanded in scope into full authentication per user decision.
