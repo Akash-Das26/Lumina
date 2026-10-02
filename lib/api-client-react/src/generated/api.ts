@@ -20,7 +20,12 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  AuthCredentials,
+  AuthRegisterInput,
+  AuthUser,
   HealthStatus,
+  ListOpenaiConversationsParams,
+  ListOpenaiMessagesParams,
   OpenaiConversation,
   OpenaiConversationInput,
   OpenaiConversationWithMessages,
@@ -29,7 +34,9 @@ import type {
   OpenaiImageOutput,
   OpenaiMessage,
   OpenaiMessageInput,
-  OpenaiStats
+  OpenaiSearchResponse,
+  OpenaiStats,
+  SearchOpenaiSourcesParams
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -137,20 +144,233 @@ export function useHealthCheck<TData = Awaited<ReturnType<typeof healthCheck>>, 
 
 
 
-export const getListOpenaiConversationsUrl = () => {
+export const getRegisterAuthUrl = () => {
 
 
 
 
-  return `/api/openai/conversations`
+  return `/api/auth/register`
 }
 
 /**
- * @summary List all conversations
+ * @summary Create an account and start a session
  */
-export const listOpenaiConversations = async ( options?: Parameters<typeof customFetch>[1]): Promise<OpenaiConversation[]> => {
+export const registerAuth = async (authRegisterInput: AuthRegisterInput, options?: Parameters<typeof customFetch>[1]): Promise<AuthUser> => {
 
-  return customFetch<OpenaiConversation[]>(getListOpenaiConversationsUrl(),
+  return customFetch<AuthUser>(getRegisterAuthUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(authRegisterInput)
+  }
+);}
+
+
+
+
+
+export const getRegisterAuthMutationOptions = <TError = ErrorType<OpenaiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerAuth>>, TError,{data: BodyType<AuthRegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerAuth>>, TError,{data: BodyType<AuthRegisterInput>}, TContext> => {
+
+const mutationKey = ['registerAuth'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerAuth>>, {data: BodyType<AuthRegisterInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerAuth(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterAuthMutationResult = NonNullable<Awaited<ReturnType<typeof registerAuth>>>
+    export type RegisterAuthMutationBody = BodyType<AuthRegisterInput>
+    export type RegisterAuthMutationError = ErrorType<OpenaiError>
+
+    /**
+ * @summary Create an account and start a session
+ */
+export const useRegisterAuth = <TError = ErrorType<OpenaiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerAuth>>, TError,{data: BodyType<AuthRegisterInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerAuth>>,
+        TError,
+        {data: BodyType<AuthRegisterInput>},
+        TContext
+      > => {
+      return useMutation(getRegisterAuthMutationOptions(options));
+    }
+
+export const getLoginAuthUrl = () => {
+
+
+
+
+  return `/api/auth/login`
+}
+
+/**
+ * @summary Sign in and start a session
+ */
+export const loginAuth = async (authCredentials: AuthCredentials, options?: Parameters<typeof customFetch>[1]): Promise<AuthUser> => {
+
+  return customFetch<AuthUser>(getLoginAuthUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(authCredentials)
+  }
+);}
+
+
+
+
+
+export const getLoginAuthMutationOptions = <TError = ErrorType<OpenaiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginAuth>>, TError,{data: BodyType<AuthCredentials>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof loginAuth>>, TError,{data: BodyType<AuthCredentials>}, TContext> => {
+
+const mutationKey = ['loginAuth'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof loginAuth>>, {data: BodyType<AuthCredentials>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  loginAuth(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LoginAuthMutationResult = NonNullable<Awaited<ReturnType<typeof loginAuth>>>
+    export type LoginAuthMutationBody = BodyType<AuthCredentials>
+    export type LoginAuthMutationError = ErrorType<OpenaiError>
+
+    /**
+ * @summary Sign in and start a session
+ */
+export const useLoginAuth = <TError = ErrorType<OpenaiError>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof loginAuth>>, TError,{data: BodyType<AuthCredentials>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof loginAuth>>,
+        TError,
+        {data: BodyType<AuthCredentials>},
+        TContext
+      > => {
+      return useMutation(getLoginAuthMutationOptions(options));
+    }
+
+export const getLogoutAuthUrl = () => {
+
+
+
+
+  return `/api/auth/logout`
+}
+
+/**
+ * @summary Clear the session cookie
+ */
+export const logoutAuth = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLogoutAuthUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getLogoutAuthMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAuth>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof logoutAuth>>, TError,void, TContext> => {
+
+const mutationKey = ['logoutAuth'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof logoutAuth>>, void> = () => {
+
+
+          return  logoutAuth(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LogoutAuthMutationResult = NonNullable<Awaited<ReturnType<typeof logoutAuth>>>
+
+    export type LogoutAuthMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Clear the session cookie
+ */
+export const useLogoutAuth = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof logoutAuth>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof logoutAuth>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLogoutAuthMutationOptions(options));
+    }
+
+export const getGetAuthMeUrl = () => {
+
+
+
+
+  return `/api/auth/me`
+}
+
+/**
+ * @summary Get the signed-in user
+ */
+export const getAuthMe = async ( options?: Parameters<typeof customFetch>[1]): Promise<AuthUser> => {
+
+  return customFetch<AuthUser>(getGetAuthMeUrl(),
   {
     ...options,
     method: 'GET'
@@ -163,23 +383,107 @@ export const listOpenaiConversations = async ( options?: Parameters<typeof custo
 
 
 
-export const getListOpenaiConversationsQueryKey = () => {
+export const getGetAuthMeQueryKey = () => {
     return [
-    `/api/openai/conversations`
+    `/api/auth/me`
     ] as const;
     }
 
 
-export const getListOpenaiConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listOpenaiConversations>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetAuthMeQueryOptions = <TData = Awaited<ReturnType<typeof getAuthMe>>, TError = ErrorType<OpenaiError>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuthMe>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListOpenaiConversationsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getGetAuthMeQueryKey();
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpenaiConversations>>> = ({ signal }) => listOpenaiConversations({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getAuthMe>>> = ({ signal }) => getAuthMe({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getAuthMe>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetAuthMeQueryResult = NonNullable<Awaited<ReturnType<typeof getAuthMe>>>
+export type GetAuthMeQueryError = ErrorType<OpenaiError>
+
+
+/**
+ * @summary Get the signed-in user
+ */
+
+export function useGetAuthMe<TData = Awaited<ReturnType<typeof getAuthMe>>, TError = ErrorType<OpenaiError>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getAuthMe>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetAuthMeQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getListOpenaiConversationsUrl = (params?: ListOpenaiConversationsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/openai/conversations?${stringifiedParams}` : `/api/openai/conversations`
+}
+
+/**
+ * @summary List the signed-in user's conversations (newest first)
+ */
+export const listOpenaiConversations = async (params?: ListOpenaiConversationsParams, options?: Parameters<typeof customFetch>[1]): Promise<OpenaiConversation[]> => {
+
+  return customFetch<OpenaiConversation[]>(getListOpenaiConversationsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListOpenaiConversationsQueryKey = (params?: ListOpenaiConversationsParams,) => {
+    return [
+    `/api/openai/conversations`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListOpenaiConversationsQueryOptions = <TData = Awaited<ReturnType<typeof listOpenaiConversations>>, TError = ErrorType<OpenaiError>>(params?: ListOpenaiConversationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListOpenaiConversationsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpenaiConversations>>> = ({ signal }) => listOpenaiConversations(params, { signal, ...requestOptions });
 
 
 
@@ -189,19 +493,19 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListOpenaiConversationsQueryResult = NonNullable<Awaited<ReturnType<typeof listOpenaiConversations>>>
-export type ListOpenaiConversationsQueryError = ErrorType<unknown>
+export type ListOpenaiConversationsQueryError = ErrorType<OpenaiError>
 
 
 /**
- * @summary List all conversations
+ * @summary List the signed-in user's conversations (newest first)
  */
 
-export function useListOpenaiConversations<TData = Awaited<ReturnType<typeof listOpenaiConversations>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useListOpenaiConversations<TData = Awaited<ReturnType<typeof listOpenaiConversations>>, TError = ErrorType<OpenaiError>>(
+ params?: ListOpenaiConversationsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiConversations>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListOpenaiConversationsQueryOptions(options)
+  const queryOptions = getListOpenaiConversationsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -240,7 +544,7 @@ export const createOpenaiConversation = async (openaiConversationInput: OpenaiCo
 
 
 
-export const getCreateOpenaiConversationMutationOptions = <TError = ErrorType<unknown>,
+export const getCreateOpenaiConversationMutationOptions = <TError = ErrorType<OpenaiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOpenaiConversation>>, TError,{data: BodyType<OpenaiConversationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof createOpenaiConversation>>, TError,{data: BodyType<OpenaiConversationInput>}, TContext> => {
 
@@ -269,12 +573,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type CreateOpenaiConversationMutationResult = NonNullable<Awaited<ReturnType<typeof createOpenaiConversation>>>
     export type CreateOpenaiConversationMutationBody = BodyType<OpenaiConversationInput>
-    export type CreateOpenaiConversationMutationError = ErrorType<unknown>
+    export type CreateOpenaiConversationMutationError = ErrorType<OpenaiError>
 
     /**
  * @summary Create a new conversation
  */
-export const useCreateOpenaiConversation = <TError = ErrorType<unknown>,
+export const useCreateOpenaiConversation = <TError = ErrorType<OpenaiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createOpenaiConversation>>, TError,{data: BodyType<OpenaiConversationInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof createOpenaiConversation>>,
@@ -284,6 +588,90 @@ export const useCreateOpenaiConversation = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateOpenaiConversationMutationOptions(options));
     }
+
+export const getSearchOpenaiSourcesUrl = (params: SearchOpenaiSourcesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/openai/search?${stringifiedParams}` : `/api/openai/search`
+}
+
+/**
+ * @summary Search public sources for grounded answers
+ */
+export const searchOpenaiSources = async (params: SearchOpenaiSourcesParams, options?: Parameters<typeof customFetch>[1]): Promise<OpenaiSearchResponse> => {
+
+  return customFetch<OpenaiSearchResponse>(getSearchOpenaiSourcesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getSearchOpenaiSourcesQueryKey = (params?: SearchOpenaiSourcesParams,) => {
+    return [
+    `/api/openai/search`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getSearchOpenaiSourcesQueryOptions = <TData = Awaited<ReturnType<typeof searchOpenaiSources>>, TError = ErrorType<unknown>>(params: SearchOpenaiSourcesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchOpenaiSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getSearchOpenaiSourcesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof searchOpenaiSources>>> = ({ signal }) => searchOpenaiSources(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof searchOpenaiSources>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type SearchOpenaiSourcesQueryResult = NonNullable<Awaited<ReturnType<typeof searchOpenaiSources>>>
+export type SearchOpenaiSourcesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Search public sources for grounded answers
+ */
+
+export function useSearchOpenaiSources<TData = Awaited<ReturnType<typeof searchOpenaiSources>>, TError = ErrorType<unknown>>(
+ params: SearchOpenaiSourcesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof searchOpenaiSources>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getSearchOpenaiSourcesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetOpenaiConversationUrl = (id: number,) => {
 
@@ -433,20 +821,29 @@ export const useDeleteOpenaiConversation = <TError = ErrorType<OpenaiError>,
       return useMutation(getDeleteOpenaiConversationMutationOptions(options));
     }
 
-export const getListOpenaiMessagesUrl = (id: number,) => {
+export const getListOpenaiMessagesUrl = (id: number,
+    params?: ListOpenaiMessagesParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/openai/conversations/${id}/messages`
+  return stringifiedParams.length > 0 ? `/api/openai/conversations/${id}/messages?${stringifiedParams}` : `/api/openai/conversations/${id}/messages`
 }
 
 /**
- * @summary List messages in a conversation
+ * @summary List messages in a conversation (oldest first)
  */
-export const listOpenaiMessages = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<OpenaiMessage[]> => {
+export const listOpenaiMessages = async (id: number,
+    params?: ListOpenaiMessagesParams, options?: Parameters<typeof customFetch>[1]): Promise<OpenaiMessage[]> => {
 
-  return customFetch<OpenaiMessage[]>(getListOpenaiMessagesUrl(id),
+  return customFetch<OpenaiMessage[]>(getListOpenaiMessagesUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -459,23 +856,25 @@ export const listOpenaiMessages = async (id: number, options?: Parameters<typeof
 
 
 
-export const getListOpenaiMessagesQueryKey = (id: number,) => {
+export const getListOpenaiMessagesQueryKey = (id: number,
+    params?: ListOpenaiMessagesParams,) => {
     return [
-    `/api/openai/conversations/${id}/messages`
+    `/api/openai/conversations/${id}/messages`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListOpenaiMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listOpenaiMessages>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListOpenaiMessagesQueryOptions = <TData = Awaited<ReturnType<typeof listOpenaiMessages>>, TError = ErrorType<OpenaiError>>(id: number,
+    params?: ListOpenaiMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListOpenaiMessagesQueryKey(id);
+  const queryKey =  queryOptions?.queryKey ?? getListOpenaiMessagesQueryKey(id,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpenaiMessages>>> = ({ signal }) => listOpenaiMessages(id, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listOpenaiMessages>>> = ({ signal }) => listOpenaiMessages(id,params, { signal, ...requestOptions });
 
 
 
@@ -485,19 +884,20 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type ListOpenaiMessagesQueryResult = NonNullable<Awaited<ReturnType<typeof listOpenaiMessages>>>
-export type ListOpenaiMessagesQueryError = ErrorType<unknown>
+export type ListOpenaiMessagesQueryError = ErrorType<OpenaiError>
 
 
 /**
- * @summary List messages in a conversation
+ * @summary List messages in a conversation (oldest first)
  */
 
-export function useListOpenaiMessages<TData = Awaited<ReturnType<typeof listOpenaiMessages>>, TError = ErrorType<unknown>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export function useListOpenaiMessages<TData = Awaited<ReturnType<typeof listOpenaiMessages>>, TError = ErrorType<OpenaiError>>(
+ id: number,
+    params?: ListOpenaiMessagesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listOpenaiMessages>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListOpenaiMessagesQueryOptions(id,options)
+  const queryOptions = getListOpenaiMessagesQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

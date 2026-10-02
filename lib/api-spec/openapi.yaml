@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
   - name: openai
     description: OpenAI AI chat and image operations
 paths:
@@ -27,20 +29,126 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /auth/register:
+    post:
+      operationId: registerAuth
+      tags: [auth]
+      summary: Create an account and start a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthRegisterInput"
+      responses:
+        "201":
+          description: Created user with session cookie
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+        "409":
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+
+  /auth/login:
+    post:
+      operationId: loginAuth
+      tags: [auth]
+      summary: Sign in and start a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AuthCredentials"
+      responses:
+        "200":
+          description: Session started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+
+  /auth/logout:
+    post:
+      operationId: logoutAuth
+      tags: [auth]
+      summary: Clear the session cookie
+      responses:
+        "204":
+          description: Logged out
+
+  /auth/me:
+    get:
+      operationId: getAuthMe
+      tags: [auth]
+      summary: Get the signed-in user
+      responses:
+        "200":
+          description: Current user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthUser"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+
   /openai/conversations:
     get:
       operationId: listOpenaiConversations
       tags: [openai]
-      summary: List all conversations
+      summary: List the signed-in user's conversations (newest first)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Id of the last conversation on the previous page
+          schema:
+            type: number
+            minimum: 1
       responses:
         "200":
-          description: List of conversations
+          description: Page of conversations
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/OpenaiConversation"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
     post:
       operationId: createOpenaiConversation
       tags: [openai]
@@ -58,6 +166,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OpenaiConversation"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
 
   /openai/search:
     get:
@@ -121,27 +235,60 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OpenaiError"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
 
   /openai/conversations/{id}/messages:
     get:
       operationId: listOpenaiMessages
       tags: [openai]
-      summary: List messages in a conversation
+      summary: List messages in a conversation (oldest first)
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: number
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            maximum: 1000
+            default: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Id of the last message on the previous page
+          schema:
+            type: number
+            minimum: 1
       responses:
         "200":
-          description: List of messages
+          description: Page of messages
           content:
             application/json:
               schema:
                 type: array
                 items:
                   $ref: "#/components/schemas/OpenaiMessage"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
     post:
       operationId: sendOpenaiMessage
       tags: [openai]
@@ -205,6 +352,50 @@ components:
           type: string
       required:
         - status
+
+    AuthCredentials:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+      required:
+        - email
+        - password
+
+    AuthRegisterInput:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+      required:
+        - name
+        - email
+        - password
+
+    AuthUser:
+      type: object
+      properties:
+        id:
+          type: number
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+      required:
+        - id
+        - email
+        - name
 
     OpenaiConversation:
       type: object
