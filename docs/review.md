@@ -4,6 +4,27 @@ Session-by-session log of work. New entries go at the TOP.
 
 ---
 
+### Session 3 - 2026-10-02
+- **Goal:** Start BUG-003 (pagination + ownership scoping). User chose "full auth now" + backward-compatible limit/cursor pagination, expanding scope to a complete authentication feature.
+- **Work done:**
+  - DB: users table (lib/db/src/schema/users.ts); `conversations.userId` (nullable, FK cascade) + composite indexes on conversations and messages; schema barrel exports users.
+  - Auth core: scrypt hashing (lib/password.ts), HMAC-signed `lumina_session` cookie + `requireAuth` (lib/session.ts, SESSION_SECRET env required), `/api/auth/*` routes (routes/auth.ts) with `AUTH_AUTO_PROVISION=1` orphan adoption.
+  - API: all /api/openai routes behind requireAuth and scoped by req.userId; limit/cursor pagination on list endpoints (array response preserved); stats now per-user; openapi.yaml extended; orval codegen regenerated; api-zod barrel re-export fix for orval TS2308 collision; zod added to api-server deps (catalog).
+  - Frontend: AuthProvider (queries /api/auth/me), AuthGate on /chat routes, GuestOnly on /sign-in|/sign-up; sign-in/sign-up submit to the real API with error + pending states.
+  - Tests: auth.spec.ts (8 tests); existing specs updated with SESSION_SECRET + session cookies; .env.example + README document SESSION_SECRET and AUTH_AUTO_PROVISION.
+  - Committed: 875c51a (API+schema+spec), 96d10d3 (frontend).
+- **Features touched:** Authentication (new, Done); Conversation persistence (ownership+pagination); Sign-in/Sign-up pages (Done); Usage stats API (per-user); Smoke tests.
+- **Bugs fixed / found:** BUG-003 fixed. One new issue found and fixed in-session: auth router was mounted pathless so /register never matched (401s); fixed by using /auth/* route paths.
+- **Decisions made:**
+  - Full auth (users table + scrypt + signed cookie sessions, no session store) chosen by user over anonymous-cookie or schema-only options.
+  - Limit/cursor with plain-array response over envelope, per user choice, so generated React Query hooks kept working without frontend cache changes.
+  - userId nullable: NOT NULL would break `db:push` on existing local databases with data.
+  - requireAuth typed to set a REQUIRED req.userId so route handlers need no undefined-checks.
+  - Mock chain learned returning() — insert().returning() crashed register (500) until added.
+- **Tests run:** api-server 18/18 (7 smoke + 3 bug-002 + 8 auth); api-client-react 6/6; full typecheck; production build.
+- **Left unfinished:** docs not yet pushed; `pnpm db:push` not run against a live DB (schema verified by typecheck/tests only).
+- **Next steps:** run `pnpm db:push` on a real database; push commits; consider sign-out UI in the chat header.
+
 ### Session 2 - 2026-10-02
 - **Goal:** Fix BUG-002 — provider failures before SSE streaming begins should return a clean HTTP error instead of an in-band error frame.
 - **Work done:**
