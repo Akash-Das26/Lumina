@@ -2,6 +2,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { ThemeProvider } from '@/lib/theme-provider';
+import { AuthProvider } from '@/lib/auth-provider';
+import AuthGate from '@/components/auth-gate';
+import GuestOnly from '@/components/guest-only';
 import NotFound from '@/pages/not-found';
 import Landing from '@/pages/landing';
 import SignIn from '@/pages/sign-in';
@@ -19,10 +22,26 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Landing} />
-      <Route path="/sign-in" component={SignIn} />
-      <Route path="/sign-up" component={SignUp} />
-      <Route path="/chat" component={ChatHome} />
-      <Route path="/chat/:id" component={ChatConversation} />
+      <Route path="/sign-in">
+        <GuestOnly>
+          <SignIn />
+        </GuestOnly>
+      </Route>
+      <Route path="/sign-up">
+        <GuestOnly>
+          <SignUp />
+        </GuestOnly>
+      </Route>
+      <Route path="/chat">
+        <AuthGate>
+          <ChatHome />
+        </AuthGate>
+      </Route>
+      <Route path="/chat/:id">
+        <AuthGate>
+          <ChatConversation />
+        </AuthGate>
+      </Route>
       <Route path="/pricing" component={Pricing} />
       <Route path="/compare" component={CompareHub} />
       <Route path="/compare/:slug" component={ComparisonPage} />
@@ -35,12 +54,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="light">
-        <TooltipProvider>
-          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-            <Router />
-          </WouterRouter>
-          <Toaster />
-        </TooltipProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+              <Router />
+            </WouterRouter>
+            <Toaster />
+          </TooltipProvider>
+        </AuthProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

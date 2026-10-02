@@ -4,6 +4,8 @@ import { Sparkles, User, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { registerAuth } from '@workspace/api-client-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSeo } from '@/lib/seo';
 
 export default function SignUp() {
@@ -14,13 +16,28 @@ export default function SignUp() {
   });
 
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLocation('/chat');
+    setError(null);
+    setSubmitting(true);
+    try {
+      const user = await registerAuth({ name, email, password });
+      queryClient.setQueryData(['auth', 'me'], user);
+      setLocation('/chat');
+    } catch (err) {
+      const message =
+        (err as { data?: { error?: string } })?.data?.error ?? 'Unable to create your account. Please try again.';
+      setError(message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -35,6 +52,11 @@ export default function SignUp() {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
+          {error && (
+            <p className="text-sm text-destructive" data-testid="sign-up-error" role="alert">
+              {error}
+            </p>
+          )}
           <div className="space-y-2">
             <Label htmlFor="name" className="flex items-center gap-2">
               <User className="w-4 h-4" />
@@ -86,8 +108,8 @@ export default function SignUp() {
             />
           </div>
 
-          <Button type="submit" className="w-full h-12 text-base" data-testid="button-sign-up">
-            Create Account
+          <Button type="submit" className="w-full h-12 text-base" disabled={submitting} data-testid="button-sign-up">
+            {submitting ? 'Creating account…' : 'Create Account'}
           </Button>
         </form>
 
