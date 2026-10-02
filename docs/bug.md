@@ -8,24 +8,31 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 |---|---|---|---|---|---|
 | BUG-001 | Vulnerable transitive dependencies (18 advisories incl. 14 high in dev chain, qs prod) | Medium | Fixed | Audit 1 (2026-10-02) | 2026-10-02 (Session 1) |
 | BUG-002 | SSE provider errors stream as mid-stream event instead of HTTP error status | Low | Fixed | Audit 1 / Session 1 review of routes/openai/index.ts | 2026-10-02 (Session 2) |
-| BUG-003 | No DB pagination and no per-user ownership on conversations/messages | Low | Open | Audit 1 review of routes + db schema | — |
+| BUG-003 | No DB pagination and no per-user ownership on conversations/messages | Low | Fixed | Audit 1 review of routes + db schema | 2026-10-02 (Session 3) |
 
 ## Open
 
-### BUG-003 — No DB pagination and no per-user ownership on conversations/messages
-- **Severity / Status:** Low / Open
-- **Where:** `artifacts/api-server/src/routes/openai/index.ts` — GET /openai/conversations (selects all rows), GET /openai/conversations/:id (all messages); `lib/db/src/schema/conversations.ts`, `lib/db/src/schema/messages.ts` (no user/owner column).
-- **Repro:** create many conversations → list endpoint returns unbounded rows; any client can read/modify any conversation by id.
-- **Expected vs actual:** expected cursor/limit pagination and per-user scoping; actual is global, unbounded data access. Acceptable for local single-user use today.
-- **Root cause:** product is currently single-user/local; auth does not exist yet (sign-in/sign-up pages are UI-only — see features.md).
-- **Next step:** when auth lands, add `userId` columns + indexes, scope queries, and add `limit`/`cursor` params to list endpoints.
-- **Related:** Audit 1 finding 5 area; features.md "Conversation persistence", "Sign-in / Sign-up pages".
+_(none)_
 
 ## In Progress
 
 _(none)_
 
 ## Fixed
+
+### BUG-003 — No DB pagination and no per-user ownership on conversations/messages
+- **Severity / Status:** Low / Fixed (2026-10-02, Session 3) — expanded in scope into full authentication per user decision.
+- **Where (original):** artifacts/api-server/src/routes/openai/index.ts (unscoped, unbounded queries); lib/db/src/schema/{conversations,messages}.ts (no owner column).
+- **Root cause:** no auth existed; product was single-user/local.
+- **Fix applied:**
+  - **Auth:** new `users` table (lib/db/src/schema/users.ts), scrypt password hashing (artifacts/api-server/src/lib/password.ts), HMAC-signed session cookie `lumina_session` + `requireAuth` middleware (artifacts/api-server/src/lib/session.ts, SESSION_SECRET env), and `/api/auth/register|login|logout|me` routes (artifacts/api-server/src/routes/auth.ts).
+  - **Ownership:** `conversations.userId` (nullable for migration safety) with FK cascade + composite index; every conversation/message/stats query scoped via `req.userId`; id-scoped routes return 404 for other users' conversations (indistinguishable from missing).
+  - **Pagination:** `?limit` + `?cursor` (id-based) on GET conversations (default 50, max 200) and GET messages (default 200, max 1000); response stays a plain array so the generated client kept working; over-fetch-by-1 page detection server-side. New indexes on both tables.
+  - **Contract:** openapi.yaml extended (auth endpoints, query params, 401s); orval codegen regenerated api-zod + api-client-react; api-zod barrel got an explicit re-export resolving an orval naming collision (TS2308).
+  - **Frontend:** sign-in/sign-up call the real API with error display; AuthProvider + AuthGate (guard /chat) + GuestOnly (redirect signed-in users) added; routes wired in App.tsx.
+  - **Migration aid:** `AUTH_AUTO_PROVISION=1` makes the first registered account adopt pre-auth conversations (rows with NULL userId). `SESSION_SECRET` documented in .env.example + README.
+- **Verified by:** 24/24 tests (18 api-server incl. 8 new auth tests; 6 api-client-react); full typecheck; production build. Commits 875c51a, 96d10d3.
+- **Related:** Audit 1 finding 5 area; Session 3; features.md "Authentication", "Conversation persistence", "Sign-in / Sign-up pages".
 
 ### BUG-002 — SSE provider errors stream as mid-stream event instead of HTTP error status
 - **Severity / Status:** Low / Fixed (2026-10-02, Session 2)

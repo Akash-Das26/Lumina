@@ -13,21 +13,22 @@ Living document: update statuses and add entries whenever features change. Never
 | Image generation UI | Planned | (no frontend caller of `POST /api/openai/generate-image` yet) | 2026-10-02 |
 | Voice / audio integrations | Planned | lib/integrations-openai-ai-server/src/audio/, lib/integrations-openai-ai-react/src/audio/ | 2026-10-02 |
 | Document context (attachments) | Done | artifacts/lumina/src/pages/chat-conversation.tsx | 2026-10-02 |
-| Conversation persistence | Done | lib/db/src/schema/conversations.ts, lib/db/src/schema/messages.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 |
+| Conversation persistence | Done | lib/db/src/schema/conversations.ts, lib/db/src/schema/messages.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 (user-scoped + paginated) |
 | Auto-titling conversations | Done | artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 |
 | Conversation exports (Markdown/JSON) | Done | artifacts/lumina/src/pages/chat-conversation.tsx (`exportConversation`) | 2026-10-02 |
 | Usage stats API | Done | artifacts/api-server/src/routes/openai/index.ts (`GET /openai/stats`) | 2026-10-02 |
 | Landing page + SEO | Done | artifacts/lumina/src/pages/landing.tsx, artifacts/lumina/src/lib/seo.ts | 2026-10-02 |
 | Comparison hub (SEO) | Done | artifacts/lumina/src/pages/compare-hub.tsx, artifacts/lumina/src/pages/comparison.tsx, artifacts/lumina/src/lib/comparisons.ts, artifacts/lumina/src/lib/seo.ts | 2026-10-02 |
 | Pricing page | Done | artifacts/lumina/src/pages/pricing.tsx | 2026-10-02 |
-| Sign-in / Sign-up pages | Planned | artifacts/lumina/src/pages/sign-in.tsx, artifacts/lumina/src/pages/sign-up.tsx | 2026-10-02 |
+| Sign-in / Sign-up pages | Done | artifacts/lumina/src/pages/sign-in.tsx, artifacts/lumina/src/pages/sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/components/auth-gate.tsx, artifacts/lumina/src/components/guest-only.tsx | 2026-10-02 |
+| Authentication (backend) | Done | artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, lib/db/src/schema/users.ts | 2026-10-02 |
 | Theme toggle | Done | artifacts/lumina/src/components/theme-toggle.tsx, artifacts/lumina/src/lib/theme-provider.tsx | 2026-10-02 |
 | API health check | Done | artifacts/api-server/src/routes/health.ts | 2026-10-02 |
 | API hardening (CORS allowlist, helmet, rate limits, 1MB body limit) | Done | artifacts/api-server/src/app.ts, artifacts/api-server/src/middleware/rate-limit.ts | 2026-10-02 |
 | Dev launcher + API proxy | Done | scripts/dev-local.mjs | 2026-10-02 |
 | Shared API client + fetch layer | Done | lib/api-client-react/src/custom-fetch.ts, lib/api-client-react/src/generated/ | 2026-10-02 |
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
-| Smoke tests | Done | artifacts/api-server/test/app.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-02 |
+| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-02 |
 
 ## Feature details
 
@@ -90,7 +91,7 @@ Postgres storage of conversations and messages.
 - **How it works:** Drizzle ORM schema `conversations` and `messages` tables; REST CRUD under `/api/openai/conversations`.
 - **Key files/functions:** lib/db/src/schema/conversations.ts, lib/db/src/schema/messages.ts, lib/db/src/index.ts (`Pool`), openai route handlers
 - **Dependencies:** PostgreSQL (DATABASE_URL), drizzle-orm, pg
-- **Known limitations:** no pagination on message/conversation lists; no auth/ownership — all conversations are global.
+- **Known limitations:** conversations.userId is nullable for migration safety; legacy rows stay unowned unless AUTH_AUTO_PROVISION=1 is set before the first registration.
 - **Dates:** added 2026-07-29, last modified 2026-10-02
 
 ### Auto-titling conversations
@@ -134,10 +135,20 @@ Static pricing tiers.
 - **Dates:** added 2026-07-29, last modified 2026-10-02
 
 ### Sign-in / Sign-up pages
-UI-only forms; no backend auth exists.
-- **Status:** Planned (pages render and submit to nowhere; backend + sessions required)
-- **Key files:** artifacts/lumina/src/pages/sign-in.tsx, sign-up.tsx
+Working auth forms backed by the auth API, with route guards.
+- **Status:** Done
+- **How it works:** forms call `loginAuth`/`registerAuth` from the generated client, surface API error messages, and on success seed the `['auth','me']` query cache and navigate to /chat. AuthProvider exposes `{user, status, signOut}` via /api/auth/me; AuthGate guards /chat routes (redirects to /sign-in); GuestOnly redirects signed-in users to /chat.
+- **Key files:** artifacts/lumina/src/pages/sign-in.tsx, sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/components/auth-gate.tsx, guest-only.tsx, App.tsx
 - **Dates:** added 2026-07-29, last modified 2026-10-02
+
+### Authentication (backend)
+Email/password auth with signed-cookie sessions and per-user data scoping.
+- **Status:** Done
+- **How it works:** `POST /api/auth/register|login` verify credentials (scrypt hashes, artifacts/api-server/src/lib/password.ts) and set an HMAC-signed `lumina_session` cookie (lib/session.ts, 30-day TTL, SESSION_SECRET env). `requireAuth` middleware gates all /api/openai routes and attaches `req.userId`; every conversation/message/stats query filters by it, and id-scoped routes 404 on other users' rows. GET conversations supports `?limit` (default 50, max 200) and `?cursor` (last id), newest first; GET messages same (default 200, max 1000, oldest first). `AUTH_AUTO_PROVISION=1` lets the first registered user adopt pre-auth conversations.
+- **Key files:** artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, artifacts/api-server/src/routes/openai/index.ts, lib/db/src/schema/users.ts
+- **Dependencies:** zod (api-server), drizzle-orm, Node crypto; SESSION_SECRET required in .env.
+- **Known limitations:** no password reset, no rate limit on auth endpoints (login is brute-forceable in theory), sessions cannot be individually revoked (secret-wide only).
+- **Dates:** added 2026-10-02, last modified 2026-10-02
 
 ### Theme toggle
 Light/dark switching.
