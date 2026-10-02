@@ -256,9 +256,20 @@ router.post(
       })),
     ];
 
-    res.setHeader("Content-Type", "text/event-stream");
-    res.setHeader("Cache-Control", "no-cache");
-    res.setHeader("Connection", "keep-alive");
+    // SSE headers are withheld until the provider produces its first content
+    // chunk (BUG-002): a provider failure before any content becomes a clean
+    // HTTP 502 the client can retry, while failures after streaming began can
+    // only travel as an in-band SSE error frame.
+    let sseStarted = false;
+    const startSse = () => {
+      if (sseStarted) return;
+      res.status(200);
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.flushHeaders();
+      sseStarted = true;
+    };
 
     let fullResponse = "";
 
@@ -273,16 +284,26 @@ router.post(
       for await (const chunk of stream) {
         const text = chunk.choices[0]?.delta?.content;
         if (text) {
+          startSse();
           fullResponse += text;
           res.write(`data: ${JSON.stringify({ content: text })}\n\n`);
         }
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : "The AI provider is temporarily unavailable.";
-      res.write(`data: ${JSON.stringify({ error: detail })}\n\n`);
-      res.end();
+      if (res.headersSent) {
+        // Mid-stream failure: headers are already out, only an SSE frame can carry the error.
+        res.write(`data: ${JSON.stringify({ error: detail })}\n\n`);
+        res.end();
+      } else {
+        // Provider failed before any content: clean HTTP error the client can retry on.
+        res.status(502).json({ error: detail });
+      }
       return;
     }
+
+    // An empty but successful completion still needs valid SSE framing.
+    startSse();
 
     // Persist assistant message
     await db.insert(messages).values({
