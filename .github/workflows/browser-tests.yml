@@ -1,0 +1,91 @@
+# Browser verification harnesses for the Lumina web app.
+#
+# `pnpm verify:lightbox` — the ImageLightbox in a real browser (mouse, keyboard,
+# touch, gallery navigation).
+# `pnpm verify:flow` — an ephemeral full stack (PostgreSQL, API, Vite, stub
+# provider) driven through sign-up, an Artist conversation and image generation.
+#
+# Requires:
+#   node 22 (with global WebSocket for CDP)
+#   Google Chrome/Chromium (the workflow installs it)
+#   PostgreSQL 12+ for the full flow (`sudo apt-get install postgresql`)
+
+name: Browser tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_MAJOR: 22
+
+jobs:
+  browser-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_MAJOR }}
+          cache: pnpm
+          cache-dependency-path: pnpm-workspace.yaml
+
+      - name: Install pnpm
+        run: corepack enable && pnpm --version
+
+      - name: Install dependencies (frozen)
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Google Chrome
+        run: |
+          curl -fsSLo /usr/share/keyrings/google-chrome-keyring.gpg \
+            https://dl-ssl.google.com/linux/linuxsigning-key.pub
+          echo "deb [signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] \
+            http://dl.google.com/linux/chrome/deb/ stable main" \
+            | sudo tee /etc/apt/sources.list.d/google-chrome.list
+          sudo apt-get update
+          sudo apt-get install -y google-chrome-stable
+          google-chrome --version
+
+      - name: Build typecheck + lightbox harness (no Postgres needed)
+        run: |
+          pnpm run typecheck
+          pnpm run verify:lightbox
+
+      - name: Build full flow (needs PostgreSQL on port 5432)
+        env:
+          PGHOST: localhost
+          PGDATABASE: postgres
+          PGUSER: postgres
+        run: |
+          pnpm run verify:flow
+
+      - name: Upload harness artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-harness-logs
+          path: |
+            /tmp/lumina-lightbox-*
+            /tmp/lumina-flow-*
+          retention-days: 3
