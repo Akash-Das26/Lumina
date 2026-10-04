@@ -210,7 +210,9 @@ export const SendOpenaiMessageResponse = zod.unknown()
  */
 export const GenerateOpenaiImageBody = zod.object({
   "prompt": zod.string(),
-  "size": zod.enum(['1024x1024', '1536x1024', '1024x1536']).optional()
+  "size": zod.enum(['1024x1024', '1536x1024', '1024x1536']).optional(),
+  "conversationId": zod.int().optional().describe('When set, the prompt and generated image are persisted as messages in this owned conversation.'),
+  "replaceMessageId": zod.int().optional().describe('When set (with conversationId), regenerates in place by replacing this owned message\'s content instead of appending a new prompt\/message pair.')
 })
 
 export const GenerateOpenaiImageResponse = zod.object({

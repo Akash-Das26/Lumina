@@ -87,6 +87,10 @@ export const OpenaiImageInputSize = {
 export interface OpenaiImageInput {
   prompt: string;
   size?: OpenaiImageInputSize;
+  /** When set, the prompt and generated image are persisted as messages in this owned conversation. */
+  conversationId?: number;
+  /** When set (with conversationId), regenerates in place by replacing this owned message's content instead of appending a new prompt/message pair. */
+  replaceMessageId?: number;
 }
 
 export interface OpenaiImageOutput {

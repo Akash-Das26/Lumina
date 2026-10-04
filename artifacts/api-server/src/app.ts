@@ -4,7 +4,12 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
-import { chatLimiter, statsLimiter } from "./middleware/rate-limit";
+import {
+  authLimiter,
+  chatLimiter,
+  registerLimiter,
+  statsLimiter,
+} from "./middleware/rate-limit";
 
 const app: Express = express();
 
@@ -52,10 +57,14 @@ app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 // Rate limits: `statsLimiter` covers the cheap read routes; `chatLimiter` the
-// AI/chat streaming and image-generation endpoints where abuse costs money.
+// AI/chat streaming and image-generation endpoints where abuse costs money;
+// `authLimiter`/`registerLimiter` blunt credential brute-forcing and mass
+// account creation. `/auth/me` is a cheap, frequent read and stays unlimited.
 app.use("/api/openai/stats", statsLimiter);
 app.use(["/api/openai/search", "/api/openai/generate-image"], chatLimiter);
 app.use(/\/api\/openai\/conversations(\/.*)?$/, chatLimiter);
+app.use("/api/auth/login", authLimiter);
+app.use("/api/auth/register", registerLimiter);
 
 app.use("/api", router);
 

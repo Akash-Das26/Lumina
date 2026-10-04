@@ -386,14 +386,88 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
     res.status(400).json({ error: body.error.message });
     return;
   }
+  const { prompt, size: requestedSize, conversationId, replaceMessageId } = body.data;
   const sizeMap: Record<string, "1024x1024" | "1536x1024" | "1024x1536"> = {
     "1024x1024": "1024x1024",
     "1536x1024": "1536x1024",
     "1024x1536": "1024x1536",
   };
-  const size = sizeMap[body.data.size ?? "1024x1024"] ?? "1024x1024";
-  const buffer = await generateImageBuffer(body.data.prompt, size);
-  res.json({ b64_json: buffer.toString("base64") });
+  const size = sizeMap[requestedSize ?? "1024x1024"] ?? "1024x1024";
+
+  if (replaceMessageId !== undefined && conversationId === undefined) {
+    res.status(400).json({ error: "replaceMessageId requires conversationId." });
+    return;
+  }
+
+  // Supplying a conversationId persists the exchange so the image survives a
+  // reload. Ownership is verified before we spend a provider call.
+  let conv: { id: number; title: string } | null = null;
+  if (conversationId !== undefined) {
+    const found = await findOwnedConversation(req.userId, conversationId);
+    if (!found) {
+      res.status(404).json({ error: "Conversation not found" });
+      return;
+    }
+    conv = found;
+  }
+
+  // Regenerating replaces an existing image message. Verify the target belongs
+  // to the conversation up front so a bad id never costs a provider call.
+  if (conv && replaceMessageId !== undefined) {
+    const [target] = await db
+      .select()
+      .from(messages)
+      .where(
+        and(eq(messages.id, replaceMessageId), eq(messages.conversationId, conv.id)),
+      );
+    if (!target) {
+      res.status(404).json({ error: "Message not found" });
+      return;
+    }
+  }
+
+  let buffer: Buffer;
+  try {
+    buffer = await generateImageBuffer(prompt, size);
+  } catch (error) {
+    const detail =
+      error instanceof Error ? error.message : "The image provider is temporarily unavailable.";
+    res.status(502).json({ error: detail });
+    return;
+  }
+  const b64 = buffer.toString("base64");
+
+  const imageMarkdown = `![Generated image](data:image/png;base64,${b64})`;
+
+  if (conv && replaceMessageId !== undefined) {
+    // Regenerate in place: overwrite the existing image message, no new rows.
+    await db
+      .update(messages)
+      .set({ content: imageMarkdown })
+      .where(eq(messages.id, replaceMessageId));
+  } else if (conv) {
+    // Persist user prompt + assistant image together, only after generation
+    // succeeds, so a failed generation never leaves an orphaned prompt.
+    await db.insert(messages).values({ conversationId: conv.id, role: "user", content: prompt });
+    await db.insert(messages).values({
+      conversationId: conv.id,
+      role: "assistant",
+      content: imageMarkdown,
+    });
+
+    // Auto-title from the prompt if the conversation still has its default name.
+    if (conv.title === "New Chat" || conv.title === "New conversation") {
+      const shortTitle = prompt.slice(0, 60).trim();
+      if (shortTitle) {
+        await db
+          .update(conversations)
+          .set({ title: shortTitle })
+          .where(eq(conversations.id, conv.id));
+      }
+    }
+  }
+
+  res.json({ b64_json: b64 });
 });
 
 // GET /openai/stats — per-user usage summary.

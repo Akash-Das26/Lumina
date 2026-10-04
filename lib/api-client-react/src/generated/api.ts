@@ -1008,7 +1008,7 @@ export const generateOpenaiImage = async (openaiImageInput: OpenaiImageInput, op
 
 
 
-export const getGenerateOpenaiImageMutationOptions = <TError = ErrorType<unknown>,
+export const getGenerateOpenaiImageMutationOptions = <TError = ErrorType<OpenaiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateOpenaiImage>>, TError,{data: BodyType<OpenaiImageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
 ): UseMutationOptions<Awaited<ReturnType<typeof generateOpenaiImage>>, TError,{data: BodyType<OpenaiImageInput>}, TContext> => {
 
@@ -1037,12 +1037,12 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
     export type GenerateOpenaiImageMutationResult = NonNullable<Awaited<ReturnType<typeof generateOpenaiImage>>>
     export type GenerateOpenaiImageMutationBody = BodyType<OpenaiImageInput>
-    export type GenerateOpenaiImageMutationError = ErrorType<unknown>
+    export type GenerateOpenaiImageMutationError = ErrorType<OpenaiError>
 
     /**
  * @summary Generate an image from a text prompt
  */
-export const useGenerateOpenaiImage = <TError = ErrorType<unknown>,
+export const useGenerateOpenaiImage = <TError = ErrorType<OpenaiError>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateOpenaiImage>>, TError,{data: BodyType<OpenaiImageInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof generateOpenaiImage>>,

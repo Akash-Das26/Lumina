@@ -8,23 +8,44 @@ import {
   getGetOpenaiConversationQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, FileText } from 'lucide-react';
+import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, FileText, LogOut } from 'lucide-react';
 import { ConversationList } from '@/components/conversation-list';
 import { ModeSelector } from '@/components/mode-selector';
 import { ThemeToggle } from '@/components/theme-toggle';
-import { MessageBubble } from '@/components/message-bubble';
+import { MessageBubble, extractImageSrc } from '@/components/message-bubble';
+import { ImageLightbox } from '@/components/image-lightbox';
 import { ChatInput } from '@/components/chat-input';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ModeKey, getModeById } from '@/lib/modes';
+import { useAuth } from '@/lib/auth-provider';
 import { streamMessage } from '@/lib/stream-message';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useSeo } from '@/lib/seo';
 
 interface TempMessage {
+  id?: number;
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  isGenerating?: boolean;
+}
+
+/** Closest earlier user message — the prompt behind a generated image. */
+function findPrecedingUserMessage(messages: TempMessage[], index: number): string | undefined {
+  for (let i = index - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return messages[i].content;
+  }
+  return undefined;
 }
 
 interface SearchSource {
@@ -39,6 +60,7 @@ export default function ChatConversation() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user, signOut } = useAuth();
   const id = params.id ? Number(params.id) : null;
   const { data: conversation, isLoading } = useGetOpenaiConversation(id!, {
     query: { enabled: !!id, queryKey: getGetOpenaiConversationQueryKey(id!) },
@@ -52,6 +74,9 @@ export default function ChatConversation() {
   const [isStreamingActive, setIsStreamingActive] = useState(false);
   const [sources, setSources] = useState<SearchSource[]>([]);
   const [copied, setCopied] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   useSeo({
     title: conversation ? `${conversation.title} — Lumina AI` : 'Conversation — Lumina AI',
@@ -88,25 +113,37 @@ export default function ChatConversation() {
     // Add user message immediately
     setTempMessages((prev) => [...prev, { role: 'user', content }]);
 
-    // Artist mode: generate image
+    // Artist mode: generate an image via the image API. Passing conversationId
+    // makes the server persist the prompt + image, so the result survives a
+    // reload instead of living only in local component state.
     if (selectedMode === 'artist') {
-      setTempMessages((prev) => [...prev, { role: 'assistant', content: 'Generating image...', isStreaming: true }]);
-      
+      setTempMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: 'Generating image...', isGenerating: true },
+      ]);
+
       generateImage.mutate(
-        { data: { prompt: content } },
+        { data: { prompt: content, conversationId: id } },
         {
-          onSuccess: (result) => {
+          onSuccess: async (result) => {
+            // Render the image immediately for instant feedback...
             setTempMessages((prev) => {
               const updated = [...prev];
               updated[updated.length - 1] = {
                 role: 'assistant',
                 content: `![Generated image](data:image/png;base64,${result.b64_json})`,
+                isGenerating: false,
                 isStreaming: false,
               };
               return updated;
             });
-            queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) });
-            queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() });
+            // ...then drop the optimistic pair once the refetched conversation
+            // already carries the persisted messages (avoids showing them twice).
+            await Promise.all([
+              queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) }),
+              queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() }),
+            ]);
+            setTempMessages([]);
           },
           onError: (error) => {
             setTempMessages((prev) => prev.slice(0, -1));
@@ -214,10 +251,67 @@ export default function ChatConversation() {
     window.setTimeout(() => setCopied(false), 1800);
   };
 
+  const handleSignOut = async () => {
+    setSigningOut(true);
+    try {
+      // On success AuthGate redirects to /sign-in, unmounting this page.
+      await signOut();
+    } catch (error) {
+      setSigningOut(false);
+      toast({
+        title: 'Sign out failed',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleRegenerateImage = (messageId: number, prompt: string) => {
+    if (!id) return;
+    setRegeneratingId(messageId);
+    // replaceMessageId makes the server overwrite this image in place instead
+    // of appending another prompt/image pair.
+    generateImage.mutate(
+      { data: { prompt, conversationId: id, replaceMessageId: messageId } },
+      {
+        onSuccess: async () => {
+          await queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) });
+          setRegeneratingId(null);
+        },
+        onError: (error) => {
+          setRegeneratingId(null);
+          toast({
+            title: 'Image generation failed',
+            description: error instanceof Error ? error.message : 'Unknown error',
+            variant: 'destructive',
+          });
+        },
+      }
+    );
+  };
+
   const allMessages: TempMessage[] = [
-    ...(conversation?.messages || []).map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+    ...(conversation?.messages || []).map((m) => ({
+      id: m.id,
+      role: m.role as 'user' | 'assistant',
+      content: m.content,
+    })),
     ...tempMessages,
   ];
+
+  // Every generated image in the conversation, in display order, plus a map
+  // from message index to image index so a click can open the shared lightbox.
+  const imageItems: { src: string }[] = [];
+  const imageIndexByMessage: number[] = [];
+  allMessages.forEach((msg) => {
+    const src = msg.role === 'assistant' ? extractImageSrc(msg.content) : undefined;
+    if (src) {
+      imageIndexByMessage.push(imageItems.length);
+      imageItems.push({ src });
+    } else {
+      imageIndexByMessage.push(-1);
+    }
+  });
 
   return (
     <div className="flex h-[100dvh] bg-background overflow-hidden">
@@ -294,6 +388,43 @@ export default function ChatConversation() {
               </>
             )}
             <ModeSelector selected={selectedMode} onChange={setSelectedMode} />
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Account"
+                    data-testid="button-account-menu"
+                  >
+                    <Avatar className="h-8 w-8">
+                      <AvatarFallback className="text-xs">
+                        {user.name?.trim()?.charAt(0)?.toUpperCase() || 'U'}
+                      </AvatarFallback>
+                    </Avatar>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>
+                    <div className="flex flex-col">
+                      <span className="truncate text-sm font-medium">{user.name}</span>
+                      <span className="truncate text-xs font-normal text-muted-foreground">
+                        {user.email}
+                      </span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onSelect={() => void handleSignOut()}
+                    disabled={signingOut}
+                    data-testid="button-sign-out"
+                  >
+                    <LogOut className="mr-2 h-4 w-4" />
+                    {signingOut ? 'Signing out…' : 'Sign out'}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </header>
 
@@ -313,14 +444,29 @@ export default function ChatConversation() {
             </div>
           )}
 
-          {allMessages.map((msg, idx) => (
-            <MessageBubble
-              key={idx}
-              role={msg.role}
-              content={msg.content}
-              isStreaming={msg.isStreaming}
-            />
-          ))}
+          {allMessages.map((msg, idx) => {
+            const imagePrompt =
+              msg.role === 'assistant' && msg.content.startsWith('![')
+                ? findPrecedingUserMessage(allMessages, idx)
+                : undefined;
+            const imageIndex = imageIndexByMessage[idx] ?? -1;
+            return (
+              <MessageBubble
+                key={msg.id ?? `temp-${idx}`}
+                role={msg.role}
+                content={msg.content}
+                isStreaming={msg.isStreaming}
+                isGenerating={msg.isGenerating}
+                isRegenerating={msg.id != null && regeneratingId === msg.id}
+                onOpenImage={imageIndex >= 0 ? () => setLightboxIndex(imageIndex) : undefined}
+                onRegenerate={
+                  msg.id != null && imagePrompt
+                    ? () => handleRegenerateImage(msg.id as number, imagePrompt)
+                    : undefined
+                }
+              />
+            );
+          })}
           {selectedMode === 'search' && sources.length > 0 && (
             <div className="mx-auto mt-5 w-full max-w-3xl rounded-2xl border border-primary/15 bg-primary/[0.03] p-4">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
@@ -355,6 +501,13 @@ export default function ChatConversation() {
           }
         />
       </main>
+
+      <ImageLightbox
+        images={imageItems}
+        index={lightboxIndex}
+        onIndexChange={setLightboxIndex}
+        onClose={() => setLightboxIndex(null)}
+      />
     </div>
   );
 }

@@ -1,17 +1,50 @@
 import { cn } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
-import { Bot, User, Loader2 } from 'lucide-react';
+import { Bot, User, Loader2, Download, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface MessageBubbleProps {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
   isGenerating?: boolean;
+  isRegenerating?: boolean;
+  onRegenerate?: () => void;
+  onOpenImage?: () => void;
 }
 
-export function MessageBubble({ role, content, isStreaming, isGenerating }: MessageBubbleProps) {
+// A generated image message is exactly one markdown image line whose src is a
+// base64 data URI, e.g. `![Generated image](data:image/png;base64,...)`.
+const IMAGE_MARKDOWN = /^!\[[^\]]*\]\(([^)]+)\)$/m;
+
+/** The src of a generated-image message, or undefined for other content. */
+export function extractImageSrc(content: string): string | undefined {
+  if (!content.startsWith('![')) return undefined;
+  return content.match(IMAGE_MARKDOWN)?.[1];
+}
+
+export function MessageBubble({
+  role,
+  content,
+  isStreaming,
+  isGenerating,
+  isRegenerating,
+  onRegenerate,
+  onOpenImage,
+}: MessageBubbleProps) {
   const isUser = role === 'user';
-  const isImage = content.startsWith('![');
+  const imageSrc = extractImageSrc(content);
+  const isImage = imageSrc !== undefined;
+
+  const handleDownload = () => {
+    if (!imageSrc) return;
+    const link = document.createElement('a');
+    link.href = imageSrc;
+    link.download = `lumina-image-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
   return (
     <div
@@ -40,9 +73,57 @@ export function MessageBubble({ role, content, isStreaming, isGenerating }: Mess
           </div>
         ) : (
           <>
-            {renderMarkdown(content)}
+            {isImage && imageSrc ? (
+              <button
+                type="button"
+                onClick={onOpenImage}
+                className="block cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                title="Click to view full size"
+                aria-label="View generated image full size"
+                data-testid="button-open-image-lightbox"
+              >
+                <img
+                  src={imageSrc}
+                  alt="Generated image"
+                  className="h-auto max-w-full rounded-lg transition-opacity hover:opacity-90"
+                />
+              </button>
+            ) : (
+              renderMarkdown(content)
+            )}
             {isStreaming && !isImage && (
               <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse-glow rounded-sm" />
+            )}
+            {isImage && imageSrc && (
+              <div className="mt-2 flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 gap-1.5 px-2 text-xs"
+                  onClick={handleDownload}
+                  data-testid="button-download-image"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </Button>
+                {onRegenerate && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2 text-xs"
+                    onClick={onRegenerate}
+                    disabled={isRegenerating}
+                    data-testid="button-regenerate-image"
+                  >
+                    {isRegenerating ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-3.5 w-3.5" />
+                    )}
+                    {isRegenerating ? 'Regenerating…' : 'Re-generate'}
+                  </Button>
+                )}
+              </div>
             )}
           </>
         )}
