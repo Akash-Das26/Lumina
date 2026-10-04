@@ -31,6 +31,7 @@ Living document: update statuses and add entries whenever features change. Never
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
 | Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,image,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-03 |
 | Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-04 |
+| Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/lightbox-harness.tsx, scripts/browser/index.html | 2026-10-04 |
 
 ## Feature details
 
@@ -211,6 +212,14 @@ Vitest + React Testing Library coverage for the Lumina UI, wired into the root `
 - **Covers:** markdown rendering; ChatInput submit/keyboard/disabled behavior; MessageBubble (plain text, generating state, image + lightbox open, download, conditional re-generate); ImageLightbox (closed state, counter, boundary-disabled arrows, click/keyboard navigation, button + scroll-wheel zoom with ctrl fine step and clamping, double-click fit↔2× toggle, drag-to-pan with clamping, zoom/pan reset when switching images, close); and the auth flows — AuthGate/GuestOnly guards (loading/authenticated/unauthenticated + redirects), AuthProvider (status derivation from /auth/me, 401 vs unexpected error, signOut clearing user + invalidating caches), and the sign-in and sign-up forms (success seeds the auth cache and navigates, API error display, generic fallback, pending/disabled state); the chat header account menu (hidden when signed out, name/email display, sign-out fires once, disabled/"Signing out…" while pending, failure toast + re-enable); the conversation list sidebar (new-chat button, loading skeleton, empty state, sorted list + active highlight, delete invalidation); and the image lightbox keyboard shortcuts (navigate/zoom hints backed by real key handlers, `Esc` to close, and accessible `aria-label`s on every hint `<kbd>` plus the always-visible double-click-toggle hint).
 - **Key files:** artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/{markdown,chat-input,message-bubble,image-lightbox,auth-gate,guest-only,auth-provider,sign-in,sign-up,chat-header,conversation-list}.spec.tsx
 - **Dates:** added 2026-10-03 (Session 11); extended with auth-flow tests 2026-10-03 (Session 14); sign-up, lightbox double-click, chat-header sign-out, conversation-list, and lightbox keyboard-shortcut coverage 2026-10-03 (Session 15 + 16); accessible shortcut labels + double-click hint and zoom reset-on-image-change test 2026-10-04 (Session 17)
+
+### Browser verification harness
+`pnpm verify:lightbox` re-verifies the lightbox interactions in a real browser.
+- **Status:** Done
+- **How it works:** `scripts/browser/verify-lightbox.mjs` bundles `lightbox-harness.tsx` (which mounts the real `ImageLightbox`) with esbuild, serves it with a tiny static server on an ephemeral port, launches headless Chrome with an ephemeral DevTools port, and drives it over the Chrome DevTools Protocol with genuine input events (`Input.dispatchMouseEvent`/`dispatchKeyEvent`/`dispatchTouchEvent`). It prints a JSON report and exits non-zero on any regression. Requires Node 22+ (global `WebSocket`) and a local Chrome/Chromium.
+- **Covers:** wheel zoom (incl. Ctrl fine step), double-click fit↔2× toggle, keyboard `0`/`←`/`→`/`Esc`, drag-to-pan with clamping, zoom/pan reset on image change, and touch behaviour (`touch-action` gating, touch panning + clamping, real touch pointer events).
+- **Key files:** scripts/browser/verify-lightbox.mjs, scripts/browser/lightbox-harness.tsx, scripts/browser/index.html, scripts/browser/README.md
+- **Dates:** added 2026-10-04 (Session 17)
 
 ### Smoke tests
 Vitest suites for the API and the fetch layer, plus env-gated DB integration tests.
