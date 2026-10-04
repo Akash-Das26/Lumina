@@ -9,12 +9,13 @@ Session-by-session log of work. New entries go at the TOP.
 - **Work done:**
   - image-lightbox.tsx: every shortcut `<kbd>` now carries an `aria-label` describing its action — “Press left arrow to go to the previous image”, “…right arrow…next image”, “Press plus to zoom in”, “Press minus to zoom out”, “Press zero to reset zoom to 100%”, “Press Escape to close the lightbox”, and (only while pannable) “Press G while zoomed in to begin dragging”. Added an always-visible `lightbox-double-click-hint` in the control row (“Double-click” + `↻` kbd, aria-label “Double-click the image to toggle between fit and 2x”). `handleKeyDown`/behaviour unchanged.
   - test/image-lightbox.spec.tsx: the hint test previously did `getAllByRole('button', { name: /.+/ })` and read `aria-label`s — but `<kbd>` is not exposed with a `button` role, so that matched the real prev/next/zoom/reset/download controls instead and the assertions never saw the hint labels. Rewritten to query the hints directly with `getByLabelText(...)`; the pan test now also asserts the `G` label appears only once zoomed in. Also added a test that zooming in and panning, then navigating to another image, resets both zoom and pan to fit/centre (the `[index]` effect). Lightbox spec is 20 tests.
+  - Docs: reconciled the four living docs — corrected the Session 15 test-count snapshot, moved the out-of-order Session 6 audit note into chronological order, aligned the features.md summary-row dates/files with their detail sections, and recorded the publication.
 - **Features touched:** Image generation UI (lightbox shortcut hints + accessibility).
 - **Bugs fixed / found:** fixed the mis-querying hint test; recorded the `<kbd>`-vs-`button` accessibility nuance in audit.md.
 - **Decisions made:** assert hints via their accessible names rather than by role, since `<kbd>` has no implicit interactive role.
 - **Tests run:** lumina 68/68; whole-workspace `pnpm test` 102 passed + 2 skipped; full typecheck green.
-- **Left unfinished:** all changes uncommitted (awaiting user instruction).
-- **Next steps:** commit + push the accumulated lightbox/test/docs work.
+- **Left unfinished:** nothing outstanding — every accumulated Sessions 6–17 change was committed footer-free and pushed to origin/main (472fd33, 6a90e87, d31e7dc).
+- **Next steps:** broaden lightbox/component coverage; browser-verify the lightbox interactions.
 
 ### Session 16 - 2026-10-03
 - **Goal:** Support `Escape` to close the lightbox and advertise it in the shortcut hints.
@@ -25,7 +26,7 @@ Session-by-session log of work. New entries go at the TOP.
 - **Bugs fixed / found:** none.
 - **Decisions made:** keep Escape handling in our `handleKeyDown` for an explicit, testable branch even though Radix also closes on escape.
 - **Tests run:** lumina 66/66; whole-workspace `pnpm test` 100 passed + 2 skipped; full typecheck green.
-- **Left unfinished:** changes uncommitted (awaiting user instruction).
+- **Left unfinished:** changes uncommitted at session close (published later in Session 17).
 - **Next steps:** make the shortcut hints accessible (aria-labels) and hint the double-click toggle.
 
 ### Session 15 - 2026-10-03
@@ -45,7 +46,7 @@ Session-by-session log of work. New entries go at the TOP.
 - **Decisions made:**
   - Attach the wheel listener imperatively instead of adding a dependency; the clamp/pan helpers already exist, so wheel zoom reuses them rather than duplicating bounds logic.
 - **Tests run:** lumina 65/65 at Session 15 close (68 after the Session 16–17 additions); whole-workspace `pnpm test` 99 passed + 2 skipped; full typecheck green.
-- **Left unfinished:** changes uncommitted (awaiting user instruction).
+- **Left unfinished:** changes uncommitted at session close (published later in Session 17).
 
 ### Session 14 - 2026-10-03
 - **Goal:** Add frontend tests for the auth flows (sign-in, sign-out, AuthGate).
