@@ -44,7 +44,7 @@ Session-by-session log of work. New entries go at the TOP.
 - **Bugs fixed / found:** none. The passive-listener + late-mount issue was caught by the new tests before landing.
 - **Decisions made:**
   - Attach the wheel listener imperatively instead of adding a dependency; the clamp/pan helpers already exist, so wheel zoom reuses them rather than duplicating bounds logic.
-- **Tests run:** lumina 65/65 at Session 15 close (67 after the Session 16–17 additions); whole-workspace `pnpm test` 99 passed + 2 skipped; full typecheck green.
+- **Tests run:** lumina 65/65 at Session 15 close (68 after the Session 16–17 additions); whole-workspace `pnpm test` 99 passed + 2 skipped; full typecheck green.
 - **Left unfinished:** changes uncommitted (awaiting user instruction).
 
 ### Session 14 - 2026-10-03

@@ -7,10 +7,10 @@ Living document: update statuses and add entries whenever features change. Never
 | Feature | Status | Files involved | Last updated |
 |---|---|---|---|
 | Chat with streaming responses | Done | artifacts/lumina/src/pages/chat-conversation.tsx, artifacts/lumina/src/lib/stream-message.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 |
-| Five AI modes | Done | artifacts/lumina/src/lib/modes.ts, artifacts/lumina/src/components/mode-selector.tsx, artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 |
+| Five AI modes | Done | artifacts/lumina/src/lib/modes.ts, artifacts/lumina/src/components/mode-selector.tsx, artifacts/api-server/src/routes/openai/index.ts | 2026-10-03 |
 | Source-backed Search | Done | artifacts/api-server/src/routes/openai/index.ts (`searchPublicSources`), artifacts/lumina/src/pages/chat-conversation.tsx | 2026-10-02 |
-| Image generation API (backend) | Done | artifacts/api-server/src/routes/openai/index.ts, lib/integrations-openai-ai-server/src/image/ | 2026-10-02 |
-| Image generation UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (Artist mode), artifacts/lumina/src/components/message-bubble.tsx, artifacts/lumina/src/lib/markdown.tsx | 2026-10-03 |
+| Image generation API (backend) | Done | artifacts/api-server/src/routes/openai/index.ts, lib/integrations-openai-ai-server/src/image/ | 2026-10-03 |
+| Image generation UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (Artist mode), artifacts/lumina/src/components/message-bubble.tsx, artifacts/lumina/src/components/image-lightbox.tsx, artifacts/lumina/src/lib/markdown.tsx | 2026-10-04 |
 | Voice / audio integrations | Planned | lib/integrations-openai-ai-server/src/audio/, lib/integrations-openai-ai-react/src/audio/ | 2026-10-02 |
 | Document context (attachments) | Done | artifacts/lumina/src/pages/chat-conversation.tsx | 2026-10-02 |
 | Conversation persistence | Done | lib/db/src/schema/conversations.ts, lib/db/src/schema/messages.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 (user-scoped + paginated) |
