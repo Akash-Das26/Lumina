@@ -55,7 +55,12 @@ function App() {
     <ImageLightbox
       images={IMAGES}
       index={index}
-      onIndexChange={(i) => window.__log.indexChanges.push(i)}
+      onIndexChange={(i) => {
+        // Mirror the app: the shared lightbox is controlled, so a navigation
+        // request actually switches the displayed image.
+        window.__log.indexChanges.push(i);
+        setIndex(i);
+      }}
       onClose={() => {
         window.__log.closed += 1;
       }}

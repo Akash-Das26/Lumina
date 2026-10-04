@@ -19,6 +19,11 @@
         justify-content: center;
         background: rgba(0, 0, 0, 0.8);
       }
+      /* The app clips the stage (Tailwind overflow-hidden); mirror that here so a
+         zoomed image never covers the control row and blocks clicks. */
+      [data-testid='image-lightbox-stage'] {
+        overflow: hidden;
+      }
     </style>
   </head>
   <body>

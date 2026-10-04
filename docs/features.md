@@ -31,7 +31,7 @@ Living document: update statuses and add entries whenever features change. Never
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
 | Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,image,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-03 |
 | Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-04 |
-| Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/lightbox-harness.tsx, scripts/browser/index.html | 2026-10-04 |
+| Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/{lightbox-harness.tsx,index.html,stub-provider.mjs,cdp.mjs,chrome.mjs} | 2026-10-04 |
 
 ## Feature details
 
@@ -214,11 +214,11 @@ Vitest + React Testing Library coverage for the Lumina UI, wired into the root `
 - **Dates:** added 2026-10-03 (Session 11); extended with auth-flow tests 2026-10-03 (Session 14); sign-up, lightbox double-click, chat-header sign-out, conversation-list, and lightbox keyboard-shortcut coverage 2026-10-03 (Session 15 + 16); accessible shortcut labels + double-click hint and zoom reset-on-image-change test 2026-10-04 (Session 17)
 
 ### Browser verification harness
-`pnpm verify:lightbox` re-verifies the lightbox interactions in a real browser.
+Two real-browser checks driven over the Chrome DevTools Protocol with genuine input events.
 - **Status:** Done
-- **How it works:** `scripts/browser/verify-lightbox.mjs` bundles `lightbox-harness.tsx` (which mounts the real `ImageLightbox`) with esbuild, serves it with a tiny static server on an ephemeral port, launches headless Chrome with an ephemeral DevTools port, and drives it over the Chrome DevTools Protocol with genuine input events (`Input.dispatchMouseEvent`/`dispatchKeyEvent`/`dispatchTouchEvent`). It prints a JSON report and exits non-zero on any regression. Requires Node 22+ (global `WebSocket`) and a local Chrome/Chromium.
-- **Covers:** wheel zoom (incl. Ctrl fine step), double-click fit↔2× toggle, keyboard `0`/`←`/`→`/`Esc`, drag-to-pan with clamping, zoom/pan reset on image change, and touch behaviour (`touch-action` gating, touch panning + clamping, real touch pointer events).
-- **Key files:** scripts/browser/verify-lightbox.mjs, scripts/browser/lightbox-harness.tsx, scripts/browser/index.html, scripts/browser/README.md
+- **How it works:** `pnpm verify:lightbox` bundles `lightbox-harness.tsx` (which mounts the real `ImageLightbox`) with esbuild, serves it on an ephemeral port and drives headless Chrome (ephemeral DevTools port). `pnpm verify:flow` stands up a throwaway stack — ephemeral PostgreSQL, the real API server + Vite via `scripts/dev-local.mjs`, and the stub image provider — and drives Chrome through the actual app. Both share `cdp.mjs`/`chrome.mjs`, print a JSON report and exit non-zero on any regression. `verify:flow` skips (exit 0) when PostgreSQL/Chrome are missing unless `REQUIRE=1`. Requires Node 22+ (global `WebSocket`).
+- **Covers:** (lightbox) wheel zoom incl. Ctrl fine step, double-click fit↔2× toggle, keyboard `0`/`←`/`→`/`Esc`, drag-to-pan with clamping, gallery navigation (buttons + arrow keys, counter, boundary-disabled arrows, distinct images, zoom/pan reset on navigate) and touch behaviour (`touch-action` gating, touch panning + clamping, real touch pointer events); (flow) sign-up → Artist conversation → image generation → lightbox open/zoom/Escape, asserting HTTP 201/201/200 and no page exceptions.
+- **Key files:** scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/lightbox-harness.tsx, scripts/browser/index.html, scripts/browser/stub-provider.mjs, scripts/browser/{cdp,chrome}.mjs, scripts/browser/README.md
 - **Dates:** added 2026-10-04 (Session 17)
 
 ### Smoke tests
