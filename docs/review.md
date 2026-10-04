@@ -8,11 +8,11 @@ Session-by-session log of work. New entries go at the TOP.
 - **Goal:** Give the lightbox keyboard/gesture hints accessible names, add a hint for the double-click zoom toggle, and fix the hint test.
 - **Work done:**
   - image-lightbox.tsx: every shortcut `<kbd>` now carries an `aria-label` describing its action — “Press left arrow to go to the previous image”, “…right arrow…next image”, “Press plus to zoom in”, “Press minus to zoom out”, “Press zero to reset zoom to 100%”, “Press Escape to close the lightbox”, and (only while pannable) “Press G while zoomed in to begin dragging”. Added an always-visible `lightbox-double-click-hint` in the control row (“Double-click” + `↻` kbd, aria-label “Double-click the image to toggle between fit and 2x”). `handleKeyDown`/behaviour unchanged.
-  - test/image-lightbox.spec.tsx: the hint test previously did `getAllByRole('button', { name: /.+/ })` and read `aria-label`s — but `<kbd>` is not exposed with a `button` role, so that matched the real prev/next/zoom/reset/download controls instead and the assertions never saw the hint labels. Rewritten to query the hints directly with `getByLabelText(...)`; the pan test now also asserts the `G` label appears only once zoomed in. Lightbox spec is 19 tests.
+  - test/image-lightbox.spec.tsx: the hint test previously did `getAllByRole('button', { name: /.+/ })` and read `aria-label`s — but `<kbd>` is not exposed with a `button` role, so that matched the real prev/next/zoom/reset/download controls instead and the assertions never saw the hint labels. Rewritten to query the hints directly with `getByLabelText(...)`; the pan test now also asserts the `G` label appears only once zoomed in. Also added a test that zooming in and panning, then navigating to another image, resets both zoom and pan to fit/centre (the `[index]` effect). Lightbox spec is 20 tests.
 - **Features touched:** Image generation UI (lightbox shortcut hints + accessibility).
 - **Bugs fixed / found:** fixed the mis-querying hint test; recorded the `<kbd>`-vs-`button` accessibility nuance in audit.md.
 - **Decisions made:** assert hints via their accessible names rather than by role, since `<kbd>` has no implicit interactive role.
-- **Tests run:** lumina 67/67; whole-workspace `pnpm test` 101 passed + 2 skipped; full typecheck green.
+- **Tests run:** lumina 68/68; whole-workspace `pnpm test` 102 passed + 2 skipped; full typecheck green.
 - **Left unfinished:** all changes uncommitted (awaiting user instruction).
 - **Next steps:** commit + push the accumulated lightbox/test/docs work.
 

@@ -124,6 +124,32 @@ describe('ImageLightbox', () => {
     expect(img).toHaveStyle({ transform: 'translate(0px, 0px) scale(1)' });
   });
 
+  it('resets zoom and pan when navigating to a different image', async () => {
+    const user = userEvent.setup();
+    const { rerender, props } = renderLightbox(0);
+    const img = screen.getByTestId('image-lightbox');
+    const stage = screen.getByTestId('image-lightbox-stage');
+    Object.defineProperty(img, 'offsetWidth', { value: 400, configurable: true });
+    Object.defineProperty(img, 'offsetHeight', { value: 300, configurable: true });
+
+    // Zoom in and pan so the reset is observable.
+    await user.click(screen.getByTestId('button-lightbox-zoom-in'));
+    fireEvent.pointerDown(stage, { clientX: 100, clientY: 100, pointerId: 5 });
+    fireEvent.pointerMove(stage, { clientX: 130, clientY: 120, pointerId: 5 });
+    fireEvent.pointerUp(stage, { pointerId: 5 });
+    expect(screen.getByTestId('lightbox-zoom')).toHaveTextContent('125%');
+    expect(img).toHaveStyle({ transform: 'translate(30px, 20px) scale(1.25)' });
+
+    // Opening a different image starts it un-zoomed and centred.
+    rerender(<ImageLightbox {...props} index={1} />);
+    expect(screen.getByTestId('image-lightbox')).toHaveAttribute('src', IMAGES[1].src);
+    expect(screen.getByTestId('lightbox-zoom')).toHaveTextContent('100%');
+    expect(screen.getByTestId('image-lightbox')).toHaveStyle({
+      transform: 'translate(0px, 0px) scale(1)',
+    });
+    expect(screen.queryByTestId('lightbox-pan-hint')).not.toBeInTheDocument();
+  });
+
   it('zooms in and out with the mouse wheel', () => {
     renderLightbox(0);
     const img = screen.getByTestId('image-lightbox');
