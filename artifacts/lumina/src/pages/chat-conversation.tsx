@@ -61,7 +61,13 @@ export default function ChatConversation() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, signOut } = useAuth();
-  const id = params.id ? Number(params.id) : null;
+  // Audit 3 F-13: /chat/abc yields NaN — redirect to /chat instead of
+  // rendering a conversation page whose queries are disabled.
+  const rawId = params.id ? Number(params.id) : null;
+  const id = rawId !== null && Number.isNaN(rawId) ? null : rawId;
+  useEffect(() => {
+    if (params.id && id === null) setLocation('/chat');
+  }, [params.id, id, setLocation]);
   const { data: conversation, isLoading } = useGetOpenaiConversation(id!, {
     query: { enabled: !!id, queryKey: getGetOpenaiConversationQueryKey(id!) },
   });
