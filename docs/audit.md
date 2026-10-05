@@ -88,7 +88,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: add a stats test (counts + scoping) and an /auth/me deleted-user test.
   - Effort: Small.
 
-  **F-11 (Low, Docs/config) — version/date drift across docs.**
+  **F-11 (Low, Docs/config) — version/date drift across docs.** *Fixed (Session 20):* README now says "Node.js 20+ (CI validates against Node 22)" and replit.md says Node 22 instead of 24; the features.md stale line cite was already resolved. Commit b404331.
   - Location: replit.md ("Node.js 24") vs README.md ("Node.js 20+") vs CI (`NODE_MAJOR: 22`); docs/features.md line 59 still cites "chat-conversation.tsx ~line 124-138" for search-source fetching (actual: line ~170).
   - Recommended fix: settle on the supported Node range in one place (README) and reference it; fix the features.md line cite.
   - Effort: Small.
