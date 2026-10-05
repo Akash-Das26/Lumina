@@ -67,6 +67,9 @@ jobs:
           sudo apt-get install -y google-chrome-stable
           google-chrome --version
 
+      - name: Unit and component tests (Audit 3 F-01 / BUG-006)
+        run: pnpm test
+
       - name: Build typecheck + lightbox harness (no Postgres needed)
         run: |
           pnpm run typecheck
