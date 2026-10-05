@@ -11,13 +11,20 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-003 | No DB pagination and no per-user ownership on conversations/messages | Low | Fixed | Audit 1 review of routes + db schema | 2026-10-02 (Session 3) |
 | BUG-004 | Conversations cursor pagination repeated the first page (gt vs lt on desc order) | Medium | Fixed | Session 4 live verification (2026-10-02) | 2026-10-02 (Session 4) |
 | BUG-005 | DELETE conversations route validated a body-polluted params object | Medium | Fixed | Audit 2 (2026-10-05) | 2026-10-05 (Session 18) |
-| BUG-006 | CI never runs the vitest test suite (only typecheck + browser harnesses) | High | Open | Audit 3 (2026-10-05) | — |
+| BUG-006 | CI never runs the vitest test suite (only typecheck + browser harnesses) | High | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-007 | Rate limiters keyed on proxy IP; no `trust proxy` handling | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-008 | GET conversation returns all messages; images persisted as base64 data URIs in message text | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Open | Audit 3 (2026-10-05) | — |
 
 ## Open
+
+### BUG-006 — CI never runs the vitest test suite
+- **Severity / Status:** High / **Fixed** (2026-10-05, Session 20) — Audit 3 finding F-01.
+- **Root cause:** .github/workflows/browser-tests.yml only ran `pnpm run typecheck`, `verify:lightbox`, and `verify:flow`; the 123-test vitest suite existed but was never executed in CI, so a red suite could not fail a build.
+- **Fix applied:** new step "Unit and component tests (Audit 3 F-01 / BUG-006)" running `pnpm test` before the browser-harness steps. Workflow YAML re-parsed after the edit (all 7 steps present and ordered). The step command was verified locally: `pnpm test` exit 0, 123 passed + 2 env-gated skipped. Commit a14cd34.
+- **Test added:** none needed (the fix *is* running the existing tests in CI); verification = local run of the exact step command + YAML structure check.
+- **Files changed:** .github/workflows/browser-tests.yml.
 
 ### BUG-010 — Unused root dependency `@replit/connectors-sdk`
 - **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-05.

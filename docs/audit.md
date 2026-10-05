@@ -28,7 +28,7 @@ One entry per deep audit. Append new audits below.
 
 - **Detailed findings:**
 
-  **F-01 (High, Tests/CI) — CI never runs the unit test suite.**
+  **F-01 (High, Tests/CI) — CI never runs the unit test suite.** *Fixed (Session 20):* `pnpm test` step added to .github/workflows/browser-tests.yml before the harness steps; step command verified locally (exit 0, 123 passed + 2 skipped) and workflow YAML re-parsed. Commit a14cd34. BUG-006 closed.
   - Location: `.github/workflows/browser-tests.yml` (only steps: `pnpm run typecheck`, `pnpm run verify:lightbox`, `pnpm run verify:flow`; a grep for `pnpm.*test` in the workflow matches zero lines).
   - Evidence: workflow source lines 70-77. The 123-test vitest suite (api-server, lumina, api-client-react) runs only on developer machines; CI could pass while the suite is red.
   - Recommended fix: add a step (or separate job) running `pnpm test` before the browser harnesses; ~40s of CI time.
