@@ -38,7 +38,7 @@ One entry per deep audit. Append new audits below.
   - **F-03 (Medium) — Re-generate disabled for persisted images.** *Could not reproduce (Session 18):* the gating (`msg.id != null && imagePrompt`) holds for every persisted image — the server always inserts the user prompt before the assistant image and the conversation fetch orders by `createdAt` asc. New chat-page regression tests lock the behavior in (commit 8a7ed05); if the original report was observed live, it needs a fresh reproduction.
   - **F-04 (Low) — base64 contract: server labels provider output `data:image/png` while the provider may return WebP bytes.** *(needs product decision before fixing)*
   - **F-06 (Low) — plain-array responses instead of generated client types.** *(pending)*
-  - **F-07 (Low) — duplicate `res.json({ b64_json })` in generate-image.** *(pending — reading of the route shows a single occurrence; verify before acting)*
+  - **F-07 (Low) — duplicate `res.json({ b64_json })` in generate-image.** *Not applicable (Session 18):* the route contains exactly one `res.json({ b64_json })` (routes/openai/index.ts:485); every other path in the handler returns via 400/404/502. No change needed.
   - **F-08 (Info) — `db.end()` never called (pool not closed on shutdown).** *(open, acceptable for single-process deployment)*
   - **F-09 (Info) — `isOctober` date-based logic.** *(open)*
   - **F-10 (Info) — scripts/ devDependencies duplicate root/workspace deps.** *(open)*
