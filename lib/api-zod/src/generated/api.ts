@@ -216,7 +216,8 @@ export const GenerateOpenaiImageBody = zod.object({
 })
 
 export const GenerateOpenaiImageResponse = zod.object({
-  "b64_json": zod.string()
+  "b64_json": zod.string(),
+  "media_type": zod.enum(['image/png', 'image/webp', 'image/jpeg']).describe('Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised.')
 })
 
 

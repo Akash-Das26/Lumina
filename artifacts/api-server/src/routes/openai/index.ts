@@ -14,6 +14,7 @@ import {
   GenerateOpenaiImageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../../lib/session";
+import { detectImageMediaType } from "../../lib/image-media";
 
 const router: IRouter = Router();
 
@@ -450,9 +451,13 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
     res.status(502).json({ error: detail });
     return;
   }
+  // Label the data URI by the bytes' real format (Audit 2 F-04): the provider
+  // is configured for PNG, but OpenAI-compatible providers may return WebP or
+  // JPEG, and a hardcoded label misstates the contract.
+  const mediaType = detectImageMediaType(buffer);
   const b64 = buffer.toString("base64");
 
-  const imageMarkdown = `![Generated image](data:image/png;base64,${b64})`;
+  const imageMarkdown = `![Generated image](data:${mediaType};base64,${b64})`;
 
   if (conv && replaceMessageId !== undefined) {
     // Regenerate in place: overwrite the existing image message, no new rows.
@@ -482,7 +487,7 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
     }
   }
 
-  res.json({ b64_json: b64 });
+  res.json({ b64_json: b64, media_type: mediaType });
 });
 
 // GET /openai/stats — per-user usage summary.

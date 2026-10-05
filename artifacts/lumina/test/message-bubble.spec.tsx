@@ -54,6 +54,33 @@ describe('MessageBubble', () => {
     expect(clickSpy).toHaveBeenCalledTimes(1);
   });
 
+  it('names the download after the data URI media type (Audit 2 F-04)', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    const webpContent = `![Generated image](data:image/webp;base64,AAAA)`;
+    render(<MessageBubble role="assistant" content={webpContent} />);
+
+    await user.click(screen.getByTestId('button-download-image'));
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download.endsWith('.webp')).toBe(true);
+  });
+
+  it('maps jpeg data URIs to the .jpg download extension', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    const jpegContent = `![Generated image](data:image/jpeg;base64,AAAA)`;
+    render(<MessageBubble role="assistant" content={jpegContent} />);
+
+    await user.click(screen.getByTestId('button-download-image'));
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download.endsWith('.jpg')).toBe(true);
+  });
+
   it('only offers re-generate when a handler is provided', async () => {
     const user = userEvent.setup();
     const onRegenerate = vi.fn();

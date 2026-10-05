@@ -93,8 +93,22 @@ export interface OpenaiImageInput {
   replaceMessageId?: number;
 }
 
+/**
+ * Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised.
+ */
+export type OpenaiImageOutputMediaType = typeof OpenaiImageOutputMediaType[keyof typeof OpenaiImageOutputMediaType];
+
+
+export const OpenaiImageOutputMediaType = {
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'image/jpeg': 'image/jpeg',
+} as const;
+
 export interface OpenaiImageOutput {
   b64_json: string;
+  /** Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised. */
+  media_type: OpenaiImageOutputMediaType;
 }
 
 export interface OpenaiStats {

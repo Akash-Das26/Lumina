@@ -95,6 +95,7 @@ describe("POST /openai/generate-image", () => {
     expect(res.status).toBe(200);
     expect(JSON.parse(res.body)).toEqual({
       b64_json: Buffer.from("PNGDATA").toString("base64"),
+      media_type: "image/png",
     });
     expect(insertValuesMock).not.toHaveBeenCalled();
   });
@@ -132,6 +133,27 @@ describe("POST /openai/generate-image", () => {
     expect(res.status).toBe(502);
     expect(JSON.parse(res.body)).toEqual({ error: "image provider down" });
     expect(insertValuesMock).not.toHaveBeenCalled();
+  });
+
+  it("labels WebP provider bytes correctly in body and persisted markdown (F-04)", async () => {
+    // "RIFF....WEBP" — a real WebP header, which a hardcoded PNG label would misreport.
+    const webp = Buffer.concat([
+      Buffer.from("RIFF"),
+      Buffer.from([0x24, 0x00, 0x00, 0x00]),
+      Buffer.from("WEBPVP8 "),
+    ]);
+    generateImageBufferMock.mockResolvedValue(webp);
+
+    const res = await generate({ prompt: "a red fox", conversationId: 1 });
+
+    expect(res.status).toBe(200);
+    const b64 = webp.toString("base64");
+    expect(JSON.parse(res.body)).toEqual({ b64_json: b64, media_type: "image/webp" });
+    expect(insertValuesMock).toHaveBeenCalledWith({
+      conversationId: 1,
+      role: "assistant",
+      content: `![Generated image](data:image/webp;base64,${b64})`,
+    });
   });
 
   it("replaces an existing image message in place when replaceMessageId is given", async () => {

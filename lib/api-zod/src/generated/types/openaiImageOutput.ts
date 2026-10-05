@@ -5,7 +5,10 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { OpenaiImageOutputMediaType } from './openaiImageOutputMediaType';
 
 export interface OpenaiImageOutput {
   b64_json: string;
+  /** Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised. */
+  media_type: OpenaiImageOutputMediaType;
 }

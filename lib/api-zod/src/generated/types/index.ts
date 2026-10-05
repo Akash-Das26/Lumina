@@ -19,6 +19,7 @@ export * from './openaiError';
 export * from './openaiImageInput';
 export * from './openaiImageInputSize';
 export * from './openaiImageOutput';
+export * from './openaiImageOutputMediaType';
 export * from './openaiMessage';
 export * from './openaiMessageInput';
 export * from './openaiSearchResponse';

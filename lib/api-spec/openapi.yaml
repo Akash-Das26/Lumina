@@ -559,8 +559,13 @@ components:
       properties:
         b64_json:
           type: string
+        media_type:
+          type: string
+          enum: ["image/png", "image/webp", "image/jpeg"]
+          description: Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised.
       required:
         - b64_json
+        - media_type
 
     OpenaiStats:
       type: object

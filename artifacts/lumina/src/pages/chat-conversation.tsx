@@ -131,7 +131,9 @@ export default function ChatConversation() {
               const updated = [...prev];
               updated[updated.length - 1] = {
                 role: 'assistant',
-                content: `![Generated image](data:image/png;base64,${result.b64_json})`,
+                // The server sniffs the real format (Audit 2 F-04); fall back to
+                // PNG when talking to an older API without media_type.
+                content: `![Generated image](data:${result.media_type ?? 'image/png'};base64,${result.b64_json})`,
                 isGenerating: false,
                 isStreaming: false,
               };

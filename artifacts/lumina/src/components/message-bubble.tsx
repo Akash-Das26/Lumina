@@ -40,7 +40,11 @@ export function MessageBubble({
     if (!imageSrc) return;
     const link = document.createElement('a');
     link.href = imageSrc;
-    link.download = `lumina-image-${Date.now()}.png`;
+    // Extension follows the data URI's media type (Audit 2 F-04) instead of
+    // assuming every image is a PNG.
+    const match = imageSrc.match(/^data:image\/([a-z0-9.+-]+);/i);
+    const ext = match ? (match[1] === 'jpeg' ? 'jpg' : match[1]) : 'png';
+    link.download = `lumina-image-${Date.now()}.${ext}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
