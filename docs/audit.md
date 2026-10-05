@@ -77,7 +77,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: add `.max(100_000)` (or similar) to content in openapi.yaml and regenerate; reject oversized messages with 400.
   - Effort: Small.
 
-  **F-09 (Low, Code quality) — unused `cookie-parser` dependency.**
+  **F-09 (Low, Code quality) — unused `cookie-parser` dependency.** *Fixed (Session 20):* removed from artifacts/api-server along with `@types/cookie-parser` via `pnpm remove`; cookie handling is done by the custom HMAC session lib. Tests + typecheck green. Commit 28994e8.
   - Location: artifacts/api-server/package.json:18 (`"cookie-parser": "^1.4.7"`); no `import` of it exists (session.ts parses cookies manually).
   - Recommended fix: remove from package.json.
   - Effort: Small.
