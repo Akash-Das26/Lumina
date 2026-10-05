@@ -10,6 +10,7 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-002 | SSE provider errors stream as mid-stream event instead of HTTP error status | Low | Fixed | Audit 1 / Session 1 review of routes/openai/index.ts | 2026-10-02 (Session 2) |
 | BUG-003 | No DB pagination and no per-user ownership on conversations/messages | Low | Fixed | Audit 1 review of routes + db schema | 2026-10-02 (Session 3) |
 | BUG-004 | Conversations cursor pagination repeated the first page (gt vs lt on desc order) | Medium | Fixed | Session 4 live verification (2026-10-02) | 2026-10-02 (Session 4) |
+| BUG-005 | DELETE conversations route validated a body-polluted params object | Medium | Fixed | Audit 2 (2026-10-05) | 2026-10-05 (Session 18) |
 
 ## Open
 
@@ -20,6 +21,16 @@ _(none)_
 _(none)_
 
 ## Fixed
+
+### BUG-005 — DELETE conversations route validated a body-polluted params object
+- **Severity / Status:** Medium / Fixed (2026-10-05, Session 18) — Audit 2 findings F-01 & F-05.
+- **Where:** artifacts/api-server/src/routes/openai/index.ts — DELETE /openai/conversations/:id.
+- **Symptom:** the handler ran `DeleteOpenaiConversationParams.safeParse(req.params)`; in Express 5, `req.params` is the merge of path params with parsed body/query fields, so a crafted request body could satisfy (or influence) a params-level schema. Body-parsing validation on a DELETE is a pointless attack surface: an attacker-controlled body should never participate in identifying the resource.
+- **Root cause:** the orval-generated params schema (`zod.coerce.number()`) coerces anything, and zod's default object behavior strips unknown keys rather than rejecting them, so the schema added no protection while inviting body-polluted input.
+- **Fix applied:** the route now takes only the path segment — `const id = Number(req.params.id)` — and rejects anything non-integer or non-positive with `400 {"error":"Missing or invalid conversation id."}`; no body parsing occurs. The unused `DeleteOpenaiConversationParams` import was removed (the generated schema remains in lib/api-zod for the response contract; it will return on the next orval codegen and must simply stay unused by this route). A missing id (trailing slash) matches no route under Express 5's `:id` semantics and yields the framework's 404. Covered by artifacts/api-server/test/delete-no-body-parsing.spec.ts (5 tests: body-ignored 204, non-numeric id 400, missing id 404, owned 204, other user's 404).
+- **Verified by:** api-server suite 33 passed + 2 env-gated skipped; whole-workspace `pnpm test` 107 passed + 2 skipped; typecheck green. Commit c93fc6a.
+- **Test-infra note:** Node's `http.request` only auto-frames POST/PATCH bodies with Transfer-Encoding: chunked; a length-less DELETE body is rejected by the HTTP parser (HPE_INVALID_METHOD) with a bare 400 before the app sees it. The shared test helper now sets Content-Length explicitly for any method carrying a body.
+- **Related:** Audit 2 F-01/F-05; Session 18.
 
 ### BUG-004 — Conversations cursor pagination repeated the first page (gt vs lt on desc order)
 - **Severity / Status:** Medium / Fixed (2026-10-02, Session 4)

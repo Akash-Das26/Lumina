@@ -59,8 +59,8 @@ Live public web sources injected into the model context.
 - **How it works:** `GET /api/openai/search?q=` fetches Wikipedia opensearch API and DuckDuckGo Instant Answer API (max 6 sources), returns title/url/snippet/domain. The frontend (`chat-conversation.tsx` ~line 124-138) fetches sources when in Search mode and appends them to the message `context`.
 - **Key files/functions:** `searchPublicSources` in artifacts/api-server/src/routes/openai/index.ts; chat-conversation.tsx context assembly
 - **Inputs:** query string (min 2 chars). **Outputs:** `{query, sources[]}`. **Dependencies:** Wikipedia API, DuckDuckGo API (no API key needed).
-- **Known limitations:** public APIs only; returns 502 when both fail; sources are appended as text, not citations UI.
-- **Dates:** added 2026-07-29, last modified 2026-10-02
+- **Known limitations:** public APIs only; returns 502 when both fail; sources are appended as text, not citations UI. Wikipedia and DuckDuckGo are fetched concurrently (Audit 2 F-02); a failure in one source no longer delays or drops the other.
+- **Dates:** added 2026-07-29, last modified 2026-10-05 (concurrent source fetches)
 
 ### Image generation API (backend)
 Text-to-image endpoint returning base64 PNG.

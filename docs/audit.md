@@ -27,3 +27,20 @@ One entry per deep audit. Append new audits below.
 - **Update (Session 15, 2026-10-03):** frontend coverage grew to 65 tests (lightbox scroll-wheel zoom with clamping and double-click fit↔2× toggle and keyboard shortcuts: navigate/zoom hints backed by real key handlers; sign-up form mirroring the sign-in spec; chat-header account menu + sign-out flow; conversation list sidebar — new-chat, loading skeleton, empty state, sorted list + active highlight, delete invalidation); workspace total is now 99 passed + 2 env-gated skipped (6 api-client-react + 28 api-server + 65 lumina).
 - **Update (Session 16, 2026-10-03):** lightbox coverage grew to 66 tests (+1): `Escape` now closes the lightbox and is shown in the zoom/close shortcut hint; `handleKeyDown` gained an `Escape` branch. Workspace total 100 passed + 2 env-gated skipped.
 - **Update (Session 17, 2026-10-04):** lightbox shortcut hints gained accessible names (`aria-label` on each `<kbd>`); double-click zoom toggle now has its own always-on shortcut hint (`lightbox-double-click-hint`) in the control row; `handleKeyDown` is unchanged. The hint test was corrected to read the accessible names directly (`getByLabelText`) after discovering `<kbd>` is not exposed with a `button` role — `getAllByRole('button', { name })` was matching the real prev/next/zoom controls instead. Frontend coverage is now 68 tests (added a zoom/pan reset-on-image-change case); workspace total is 102 passed + 2 env-gated skipped. See review.md Sessions 16–17 for the detailed work log. The lightbox interactions were additionally verified in a real browser (headless Chrome 151 driven over the DevTools Protocol with genuine input events), the complete flow (sign-up → image generation → lightbox) was driven end-to-end against the live dev stack, touch panning (with `touch-action` and touch pointer events) was verified using simulated touch input, and the checks are now committed as reusable harnesses: `pnpm verify:lightbox` (lightbox interactions incl. gallery navigation) and `pnpm verify:flow` (sign-up → image generation → lightbox against an ephemeral stack), under scripts/browser/.
+
+---
+
+### Audit 2 - 2026-10-05
+- **Scope:** Audit 2 code review of the api-server routes layer and contract surfaces (findings recorded in the session brief; F-01..F-10).
+- **Findings (severity, status):**
+  - **F-01 (Medium) — DELETE conversations params schema accepts body-polluted input.** *Fixed Session 18:* see BUG-005 in bug.md; commit c93fc6a. Route validates only the numeric path segment; regression spec test/delete-no-body-parsing.spec.ts (5 tests).
+  - **F-02 (Medium) — Search N+1: Wikipedia and DuckDuckGo fetched serially.** *Fixed Session 18:* `searchPublicSources` now runs both fetches concurrently via `Promise.all` (each failure isolated in its own try/catch; the ≤6 result cap is unchanged).
+  - **F-03 (Medium) — Re-generate disabled for persisted images.** *(pending investigation)*
+  - **F-04 (Low) — base64 contract: server labels provider output `data:image/png` while the provider may return WebP bytes.** *(needs product decision before fixing)*
+  - **F-06 (Low) — plain-array responses instead of generated client types.** *(pending)*
+  - **F-07 (Low) — duplicate `res.json({ b64_json })` in generate-image.** *(pending — reading of the route shows a single occurrence; verify before acting)*
+  - **F-08 (Info) — `db.end()` never called (pool not closed on shutdown).** *(open, acceptable for single-process deployment)*
+  - **F-09 (Info) — `isOctober` date-based logic.** *(open)*
+  - **F-10 (Info) — scripts/ devDependencies duplicate root/workspace deps.** *(open)*
+- **Summary:** 0 Critical, 0 High, 3 Medium, 3 Low, 3 Info. No dependency changes made for this audit; `pnpm audit` advisories unchanged (1 high braces ≤3.0.3, 2 moderate vitest/@vitest/mocker, 1 low esbuild — pre-existing).
+- **Update (Session 18, 2026-10-05):** F-01/F-05 fixed and committed (c93fc6a); F-02 fix applied (test pending).
