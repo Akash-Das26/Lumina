@@ -34,7 +34,7 @@ One entry per deep audit. Append new audits below.
 - **Scope:** Audit 2 code review of the api-server routes layer and contract surfaces (findings recorded in the session brief; F-01..F-10).
 - **Findings (severity, status):**
   - **F-01 (Medium) — DELETE conversations params schema accepts body-polluted input.** *Fixed Session 18:* see BUG-005 in bug.md; commit c93fc6a. Route validates only the numeric path segment; regression spec test/delete-no-body-parsing.spec.ts (5 tests).
-  - **F-02 (Medium) — Search N+1: Wikipedia and DuckDuckGo fetched serially.** *Fixed Session 18:* `searchPublicSources` now runs both fetches concurrently via `Promise.all` (each failure isolated in its own try/catch; the ≤6 result cap is unchanged).
+  - **F-02 (Medium) — Search N+1: Wikipedia and DuckDuckGo fetched serially.** *Fixed Session 18:* `searchPublicSources` now runs both fetches concurrently via `Promise.allSettled` (per-source failure isolation preserved — one provider down never costs the other's results; ≤6 result cap unchanged). Regression spec test/search-sources.spec.ts (5 tests); commit 415d1fb.
   - **F-03 (Medium) — Re-generate disabled for persisted images.** *(pending investigation)*
   - **F-04 (Low) — base64 contract: server labels provider output `data:image/png` while the provider may return WebP bytes.** *(needs product decision before fixing)*
   - **F-06 (Low) — plain-array responses instead of generated client types.** *(pending)*
@@ -43,4 +43,4 @@ One entry per deep audit. Append new audits below.
   - **F-09 (Info) — `isOctober` date-based logic.** *(open)*
   - **F-10 (Info) — scripts/ devDependencies duplicate root/workspace deps.** *(open)*
 - **Summary:** 0 Critical, 0 High, 3 Medium, 3 Low, 3 Info. No dependency changes made for this audit; `pnpm audit` advisories unchanged (1 high braces ≤3.0.3, 2 moderate vitest/@vitest/mocker, 1 low esbuild — pre-existing).
-- **Update (Session 18, 2026-10-05):** F-01/F-05 fixed and committed (c93fc6a); F-02 fix applied (test pending).
+- **Update (Session 18, 2026-10-05):** F-01/F-05 fixed and committed (c93fc6a); F-02 fixed and committed (415d1fb) — note the initial Promise.all rewrite would have turned a single-provider outage into a 502; the committed fix uses Promise.allSettled to preserve the old failure isolation, caught by the new spec before commit.
