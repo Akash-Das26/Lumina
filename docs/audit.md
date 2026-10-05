@@ -52,7 +52,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: attach an AbortController to the provider call and abort it from `req.on("close")` when SSE has started.
   - Effort: Small.
 
-  **F-05 (Medium, Dependencies/build) — unused root dependency `@replit/connectors-sdk`.**
+  **F-05 (Medium, Dependencies/build) — unused root dependency `@replit/connectors-sdk`.** *Fixed (Session 20):* removed via `pnpm remove` after re-verifying zero references in artifacts/lib/scripts/.github; tests, typecheck and build green. Commit 7888739; BUG-010 closed.
   - Location: package.json:19 (`"dependencies": { "@replit/connectors-sdk": "^0.4.1" }`).
   - Evidence: `grep -rn "@replit/connectors-sdk" artifacts lib scripts` → zero source references; `pnpm why` has no consumers.
   - Recommended fix: remove the dependency (reduces install surface; check no Replit deployment hook needs it first).

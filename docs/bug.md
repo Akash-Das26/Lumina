@@ -15,15 +15,11 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-007 | Rate limiters keyed on proxy IP; no `trust proxy` handling | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-008 | GET conversation returns all messages; images persisted as base64 data URIs in message text | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
-| BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Open | Audit 3 (2026-10-05) | — |
+| BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 
 ## Open
 
-### BUG-010 — Unused root dependency `@replit/connectors-sdk`
-- **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-05.
-- **Where:** package.json:19 (`"dependencies": { "@replit/connectors-sdk": "^0.4.1" }`).
-- **Evidence:** no import of the package anywhere in artifacts/lib/scripts (`grep -rn "@replit/connectors-sdk" artifacts lib scripts` → nothing); nothing in the lockfile depends on it.
-- **Fix:** remove the dependency (verify no Replit deployment hook relies on it first). Effort: Small.
+_(none)_
 
 ### BUG-008 — GET conversation returns all messages; images persisted as base64 data URIs
 - **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-03.
@@ -48,6 +44,15 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 _(none)_
 
 ## Fixed
+
+### BUG-010 — Unused root dependency `@replit/connectors-sdk`
+- **Severity / Status:** Medium / Fixed (2026-10-05, Session 20) — Audit 3 finding F-05.
+- **Where:** package.json — `"dependencies": { "@replit/connectors-sdk": "^0.4.1" }`.
+- **Symptom:** the root workspace carried a production dependency that no code used; every install paid its download/install cost and it stayed in the audit surface.
+- **Root cause:** leftover from the Replit-hosted era; the deployment no longer uses Replit connectors, and `grep -rn "@replit/connectors-sdk" artifacts lib scripts .github` returned zero references (nothing in the lockfile depends on it either).
+- **Fix applied:** `pnpm remove @replit/connectors-sdk` (empty root `dependencies` block removed from package.json, lockfile pruned). CI/deploy workflows reviewed — no step referenced the package.
+- **Verified by:** whole-workspace `pnpm test` exit 0 (125 passed + 2 env-gated skipped); `pnpm typecheck` 0 errors; api-server production build green. Commit 7888739.
+- **Related:** Audit 3 F-05; Session 20.
 
 ### BUG-009 — Abandoned SSE streams never aborted
 - **Severity / Status:** Medium / Fixed (2026-10-05, Session 20) — Audit 3 finding F-04.
