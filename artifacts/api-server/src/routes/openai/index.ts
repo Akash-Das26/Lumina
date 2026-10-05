@@ -6,7 +6,6 @@ import { generateImageBuffer } from "@workspace/integrations-openai-ai-server/im
 import {
   CreateOpenaiConversationBody,
   GetOpenaiConversationParams,
-  DeleteOpenaiConversationParams,
   ListOpenaiMessagesParams,
   ListOpenaiConversationsQueryParams,
   ListOpenaiMessagesQueryParams,
@@ -33,13 +32,25 @@ async function searchPublicSources(query: string): Promise<SearchSource[]> {
   const encoded = encodeURIComponent(query.trim());
   const sources: SearchSource[] = [];
 
-  try {
-    const response = await fetch(
+  // Fetch Wikipedia and DuckDuckGo concurrently. The two public endpoints are
+  // independent and never block each other; running them sequentially meant a
+  // slow Wikipedia response delayed the DuckDuckGo call and prolonged the
+  // latency of every search. The cap below keeps the result set bounded even
+  // when both sources report more topics than the frontend asks for.
+  const [wikipediaResponse, duckduckgoResponse] = await Promise.all([
+    fetch(
       `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encoded}&limit=5&namespace=0&format=json`,
       { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
-    );
-    if (response.ok) {
-      const data = (await response.json()) as [string, string[], string[], string[]];
+    ),
+    fetch(
+      `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
+      { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
+    ),
+  ]);
+
+  try {
+    if (wikipediaResponse.ok) {
+      const data = (await wikipediaResponse.json()) as [string, string[], string[], string[]];
       const titles = data[1] ?? [];
       const descriptions = data[2] ?? [];
       const urls = data[3] ?? [];
@@ -55,16 +66,12 @@ async function searchPublicSources(query: string): Promise<SearchSource[]> {
       });
     }
   } catch {
-    // Search remains useful with the second public source when Wikipedia is unavailable.
+    // Wikipedia was unreachable; DuckDuckGo is still tried below.
   }
 
   try {
-    const response = await fetch(
-      `https://api.duckduckgo.com/?q=${encoded}&format=json&no_html=1&skip_disambig=1`,
-      { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
-    );
-    if (response.ok) {
-      const data = (await response.json()) as {
+    if (duckduckgoResponse.ok) {
+      const data = (await duckduckgoResponse.json()) as {
         AbstractText?: string;
         AbstractURL?: string;
         Heading?: string;
@@ -184,18 +191,20 @@ router.get("/openai/conversations/:id", async (req, res): Promise<void> => {
     .where(eq(messages.conversationId, conv.id))
     .orderBy(asc(messages.createdAt));
   res.json({ ...conv, messages: msgs });
-});
-
-// DELETE /openai/conversations/:id
+});// DELETE /openai/conversations/:id
+// Audit 2 (F-01, F-05): the id is taken from the path param only. The old
+// zod params schema accepted extra body fields, so a crafted DELETE body
+// could smuggle values past body-parsing validation. A plain numeric check
+// keeps the contract strict and parsing-free.
 router.delete("/openai/conversations/:id", async (req, res): Promise<void> => {
-  const params = DeleteOpenaiConversationParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Missing or invalid conversation id." });
     return;
   }
   const [conv] = await db
     .delete(conversations)
-    .where(and(eq(conversations.id, params.data.id), eq(conversations.userId, req.userId)))
+    .where(and(eq(conversations.id, id), eq(conversations.userId, req.userId)))
     .returning();
   if (!conv) {
     res.status(404).json({ error: "Conversation not found" });

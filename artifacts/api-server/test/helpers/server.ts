@@ -29,11 +29,20 @@ export async function startTestServer(app: Express): Promise<TestServer> {
     path: string,
     init?: { headers?: Record<string, string>; body?: string },
   ) {
+    // Node's http.request only auto-adds Transfer-Encoding: chunked for POST
+    // and PATCH. For other methods a body without explicit framing is sent
+    // length-less and the server's HTTP parser rejects it with a raw 400
+    // (HPE_INVALID_METHOD) before Express ever sees it. Declare the length
+    // explicitly so body-carrying requests of any method are well-formed.
+    const headers = { ...init?.headers };
+    if (init?.body != null && headers["content-length"] === undefined) {
+      headers["content-length"] = Buffer.byteLength(init.body).toString();
+    }
     return new Promise<{ status: number; headers: http.IncomingHttpHeaders; body: string }>(
       (resolve, reject) => {
         const req = http.request(
           `${url}${path}`,
-          { method, headers: init?.headers },
+          { method, headers },
           (res) => {
             const chunks: Buffer[] = [];
             res.on("data", (chunk: Buffer) => chunks.push(chunk));
