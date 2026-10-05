@@ -13,4 +13,16 @@ if (!process.env.DATABASE_URL) {
 export const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 export const db = drizzle(pool, { schema });
 
+/**
+ * Close the pool. Multiple calls are safe (Audit 2 F-08): the test suite
+ * imports this module fresh per spec file under vi.resetModules(), so several
+ * pools exist per worker; each must be endable without throwing.
+ */
+let poolClosed = false;
+export async function closePool(): Promise<void> {
+  if (poolClosed) return;
+  poolClosed = true;
+  await pool.end();
+}
+
 export * from "./schema";
