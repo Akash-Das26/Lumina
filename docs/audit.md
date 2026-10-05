@@ -58,7 +58,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: remove the dependency (reduces install surface; check no Replit deployment hook needs it first).
   - Effort: Small.
 
-  **F-06 (Medium, Code quality) — orphaned duplicate integration package.**
+  **F-06 (Medium, Code quality) — orphaned duplicate integration package.** *Fixed (Session 20):* `git rm -r lib/integrations/` (11 files, 837 lines) and the `lib/integrations/*` workspace glob removed from pnpm-workspace.yaml; re-verified zero references first; tests + typecheck green. Commit 706ad47.
   - Location: `lib/integrations/openai_ai_integrations/` — 11 tracked files (audio clients/hooks, batch, image clients) with no package.json, not in tsconfig references, imported by nothing.
   - Evidence: `git ls-files lib/integrations | wc -l` → 11; `grep -rn openai_ai_integrations --include=package.json` → no matches; the live code uses `lib/integrations-openai-ai-server`. `diff` shows the two image clients have already diverged.
   - Description: stale near-duplicate of `lib/integrations-openai-ai-server` that will rot silently and confuses navigation (the workspace glob `lib/integrations/*` keeps it discoverable).
