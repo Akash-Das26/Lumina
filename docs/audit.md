@@ -35,7 +35,7 @@ One entry per deep audit. Append new audits below.
 - **Findings (severity, status):**
   - **F-01 (Medium) — DELETE conversations params schema accepts body-polluted input.** *Fixed Session 18:* see BUG-005 in bug.md; commit c93fc6a. Route validates only the numeric path segment; regression spec test/delete-no-body-parsing.spec.ts (5 tests).
   - **F-02 (Medium) — Search N+1: Wikipedia and DuckDuckGo fetched serially.** *Fixed Session 18:* `searchPublicSources` now runs both fetches concurrently via `Promise.allSettled` (per-source failure isolation preserved — one provider down never costs the other's results; ≤6 result cap unchanged). Regression spec test/search-sources.spec.ts (5 tests); commit 415d1fb.
-  - **F-03 (Medium) — Re-generate disabled for persisted images.** *(pending investigation)*
+  - **F-03 (Medium) — Re-generate disabled for persisted images.** *Could not reproduce (Session 18):* the gating (`msg.id != null && imagePrompt`) holds for every persisted image — the server always inserts the user prompt before the assistant image and the conversation fetch orders by `createdAt` asc. New chat-page regression tests lock the behavior in (commit 8a7ed05); if the original report was observed live, it needs a fresh reproduction.
   - **F-04 (Low) — base64 contract: server labels provider output `data:image/png` while the provider may return WebP bytes.** *(needs product decision before fixing)*
   - **F-06 (Low) — plain-array responses instead of generated client types.** *(pending)*
   - **F-07 (Low) — duplicate `res.json({ b64_json })` in generate-image.** *(pending — reading of the route shows a single occurrence; verify before acting)*
