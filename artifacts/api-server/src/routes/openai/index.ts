@@ -35,9 +35,11 @@ async function searchPublicSources(query: string): Promise<SearchSource[]> {
   // Fetch Wikipedia and DuckDuckGo concurrently. The two public endpoints are
   // independent and never block each other; running them sequentially meant a
   // slow Wikipedia response delayed the DuckDuckGo call and prolonged the
-  // latency of every search. The cap below keeps the result set bounded even
-  // when both sources report more topics than the frontend asks for.
-  const [wikipediaResponse, duckduckgoResponse] = await Promise.all([
+  // latency of every search. allSettled keeps the old failure isolation: one
+  // provider being unreachable must not cost the other's results. The cap
+  // below keeps the result set bounded even when both sources report more
+  // topics than the frontend asks for.
+  const [wikipediaSettled, duckduckgoSettled] = await Promise.allSettled([
     fetch(
       `https://en.wikipedia.org/w/api.php?action=opensearch&search=${encoded}&limit=5&namespace=0&format=json`,
       { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
@@ -47,9 +49,13 @@ async function searchPublicSources(query: string): Promise<SearchSource[]> {
       { headers: { "User-Agent": "LuminaAI/1.0 research feature" } },
     ),
   ]);
+  const wikipediaResponse =
+    wikipediaSettled.status === "fulfilled" ? wikipediaSettled.value : null;
+  const duckduckgoResponse =
+    duckduckgoSettled.status === "fulfilled" ? duckduckgoSettled.value : null;
 
   try {
-    if (wikipediaResponse.ok) {
+    if (wikipediaResponse?.ok) {
       const data = (await wikipediaResponse.json()) as [string, string[], string[], string[]];
       const titles = data[1] ?? [];
       const descriptions = data[2] ?? [];
@@ -70,7 +76,7 @@ async function searchPublicSources(query: string): Promise<SearchSource[]> {
   }
 
   try {
-    if (duckduckgoResponse.ok) {
+    if (duckduckgoResponse?.ok) {
       const data = (await duckduckgoResponse.json()) as {
         AbstractText?: string;
         AbstractURL?: string;
