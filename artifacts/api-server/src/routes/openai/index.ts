@@ -341,15 +341,36 @@ router.post(
 
     let fullResponse = "";
 
+    // Abort the provider stream when the client goes away (Audit 3 F-04):
+    // without this, a closed tab keeps draining billable tokens until the
+    // model finishes. Also skip persisting a partial assistant message.
+    // NOTE: req 'close' is useless here — express.json consumes the body, so
+    // the IncomingMessage already emitted 'close' by the time the handler
+    // runs. res 'close' with writableEnded=false is the reliable signal that
+    // the client terminated the connection mid-response.
+    const abortController = new AbortController();
+    let clientGone = false;
+    const onClientClose = () => {
+      clientGone = true;
+      abortController.abort();
+    };
+    res.on("close", () => {
+      if (!res.writableEnded) onClientClose();
+    });
+
     try {
-      const stream = await openai.chat.completions.create({
-        model: "openai/gpt-oss-120b",
-        max_tokens: 4096,
-        messages: chatMessages,
-        stream: true,
-      });
+      const stream = await openai.chat.completions.create(
+        {
+          model: "openai/gpt-oss-120b",
+          max_tokens: 4096,
+          messages: chatMessages,
+          stream: true,
+        },
+        { signal: abortController.signal },
+      );
 
       for await (const chunk of stream) {
+        if (abortController.signal.aborted) break;
         const text = chunk.choices[0]?.delta?.content;
         if (text) {
           startSse();
@@ -358,6 +379,10 @@ router.post(
         }
       }
     } catch (error) {
+      if (clientGone) {
+        // Client disconnected: stop quietly, nothing to respond or persist.
+        return;
+      }
       const detail = error instanceof Error ? error.message : "The AI provider is temporarily unavailable.";
       if (res.headersSent) {
         // Mid-stream failure: headers are already out, only an SSE frame can carry the error.
@@ -369,6 +394,9 @@ router.post(
       }
       return;
     }
+
+    // Client disconnected but the provider ended cleanly: nothing to persist.
+    if (clientGone) return;
 
     // Persist assistant message
     await db.insert(messages).values({
