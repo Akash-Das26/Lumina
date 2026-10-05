@@ -46,7 +46,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: paginate (or truncate to the last N messages) in the GET handler and/or move image blobs out of the messages table (object storage or a dedicated table fetched on demand).
   - Effort: Medium.
 
-  **F-04 (Medium, Bugs/error handling) — abandoned SSE streams never aborted.**
+  **F-04 (Medium, Bugs/error handling) — abandoned SSE streams never aborted.** *Fixed (Session 20):* the messages handler now owns an AbortController; `res.on("close")` with `!writableEnded` aborts it (req `close` never fires here because express.json already consumed the body), the signal is passed via the create options arg, the chunk loop breaks on abort, and the assistant message is not persisted after an abort. Regression spec sse-abort.spec.ts (2 tests). Commit 83104be; BUG-009 closed.
   - Location: artifacts/api-server/src/routes/openai/index.ts:345-366 — `openai.chat.completions.create({ stream: true })` consumed in `for await` with no `req.on("close")`/AbortController.
   - Evidence: `grep -n "close\|abort\|destroy" artifacts/api-server/src/routes/openai/index.ts` returns nothing in the messages handler. A client that closes the tab or navigates mid-stream leaves the server consuming the provider stream (billable tokens) and writing to a dead socket until completion.
   - Recommended fix: attach an AbortController to the provider call and abort it from `req.on("close")` when SSE has started.

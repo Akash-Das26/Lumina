@@ -39,11 +39,11 @@ Living document: update statuses and add entries whenever features change. Never
 ### Chat with streaming responses
 Multi-turn AI chat. Backend streams model output to the browser as Server-Sent Events.
 - **Status:** Done
-- **How it works:** `POST /api/openai/conversations/:id/messages` persists the user message, loads the last 20 messages as history, prepends a mode-based system prompt, then calls the OpenAI-compatible provider with `stream: true` and writes `data: {...}` SSE frames. The frontend `streamMessage()` in stream-message.ts reads the stream with `res.body.getReader()` and fires `onChunk`/`onDone`/`onError`.
+- **How it works:** `POST /api/openai/conversations/:id/messages` persists the user message, loads the last 20 messages as history, prepends a mode-based system prompt, then calls the OpenAI-compatible provider with `stream: true` and writes `data: {...}` SSE frames. If the client disconnects mid-stream (`res` close before the response ended), the provider call is aborted via an AbortController signal and the partial assistant message is not persisted (Audit 3 F-04 / BUG-009, 2026-10-05). The frontend `streamMessage()` in stream-message.ts reads the stream with `res.body.getReader()` and fires `onChunk`/`onDone`/`onError`.
 - **Key files/functions:** `artifacts/api-server/src/routes/openai/index.ts` (POST messages handler); `artifacts/lumina/src/lib/stream-message.ts` (`streamMessage`); `artifacts/lumina/src/pages/chat-conversation.tsx`
 - **Inputs:** conversation id, message content, mode, optional context string (truncated to 24000 chars server-side). **Outputs:** SSE events `{content}` / `{error}` / `{done:true}`; assistant message persisted to DB. **Dependencies:** `@workspace/db`, `@workspace/integrations-openai-ai-server`, model `openai/gpt-oss-120b`, max_tokens 4096.
 - **Known limitations:** provider model is hardcoded; provider failures *after* streaming has begun still arrive as an in-band SSE error frame (pre-stream failures return HTTP 502 as of BUG-002 fix, 2026-10-02).
-- **Dates:** added 2026-07-29, last modified 2026-10-02
+- **Dates:** added 2026-07-29, last modified 2026-10-05 (client-disconnect abort, F-04)
 
 ### Five AI modes
 Chat, Search, Write, Artist, Translate — each changes the system prompt.

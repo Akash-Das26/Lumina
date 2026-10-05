@@ -14,29 +14,16 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-006 | CI never runs the vitest test suite (only typecheck + browser harnesses) | High | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-007 | Rate limiters keyed on proxy IP; no `trust proxy` handling | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-008 | GET conversation returns all messages; images persisted as base64 data URIs in message text | Medium | Open | Audit 3 (2026-10-05) | — |
-| BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Open | Audit 3 (2026-10-05) | — |
+| BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Open | Audit 3 (2026-10-05) | — |
 
 ## Open
-
-### BUG-006 — CI never runs the vitest test suite
-- **Severity / Status:** High / **Fixed** (2026-10-05, Session 20) — Audit 3 finding F-01.
-- **Root cause:** .github/workflows/browser-tests.yml only ran `pnpm run typecheck`, `verify:lightbox`, and `verify:flow`; the 123-test vitest suite existed but was never executed in CI, so a red suite could not fail a build.
-- **Fix applied:** new step "Unit and component tests (Audit 3 F-01 / BUG-006)" running `pnpm test` before the browser-harness steps. Workflow YAML re-parsed after the edit (all 7 steps present and ordered). The step command was verified locally: `pnpm test` exit 0, 123 passed + 2 env-gated skipped. Commit a14cd34.
-- **Test added:** none needed (the fix *is* running the existing tests in CI); verification = local run of the exact step command + YAML structure check.
-- **Files changed:** .github/workflows/browser-tests.yml.
 
 ### BUG-010 — Unused root dependency `@replit/connectors-sdk`
 - **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-05.
 - **Where:** package.json:19 (`"dependencies": { "@replit/connectors-sdk": "^0.4.1" }`).
 - **Evidence:** no import of the package anywhere in artifacts/lib/scripts (`grep -rn "@replit/connectors-sdk" artifacts lib scripts` → nothing); nothing in the lockfile depends on it.
 - **Fix:** remove the dependency (verify no Replit deployment hook relies on it first). Effort: Small.
-
-### BUG-009 — Abandoned SSE streams never aborted
-- **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-04.
-- **Where:** artifacts/api-server/src/routes/openai/index.ts:345-366 (POST /openai/conversations/:id/messages provider loop).
-- **Symptom:** a client that disconnects mid-stream leaves the server consuming the provider stream (billable tokens) and writing to a dead socket until the model finishes; `grep -n "close\|abort\|destroy"` in the route returns nothing in the SSE handler.
-- **Fix:** wrap the provider call in an AbortController and abort from `req.on("close")` once SSE has started; skip the assistant-message persist if aborted before completion (or persist a truncated marker, by decision). Effort: Small.
 
 ### BUG-008 — GET conversation returns all messages; images persisted as base64 data URIs
 - **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-03.
@@ -61,6 +48,23 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 _(none)_
 
 ## Fixed
+
+### BUG-009 — Abandoned SSE streams never aborted
+- **Severity / Status:** Medium / Fixed (2026-10-05, Session 20) — Audit 3 finding F-04.
+- **Where:** artifacts/api-server/src/routes/openai/index.ts — POST /openai/conversations/:id/messages provider loop.
+- **Symptom:** a client that disconnects mid-stream left the server consuming the provider stream (billable tokens) and writing to a dead socket until the model finished, and a partial assistant message was then persisted.
+- **Root cause:** Node ≥16 fires IncomingMessage `close` as soon as the body is consumed — `express.json` does that before the handler runs — so `req.on("close")` never fires for a mid-stream disconnect in this app. The reliable signal is `res.on("close")` with `!res.writableEnded`.
+- **Fix applied:** the route creates an AbortController; `res.on("close")` aborts it when the response hasn't ended; the signal is passed as the create *options* argument (`create(body, { signal })` — the OpenAI SDK v6 signature rejects `signal` in the body); the chunk loop breaks when aborted; the catch path returns silently once the client is gone; the assistant message is not persisted after an abort. A route comment documents the req-vs-res close distinction.
+- **Test added:** artifacts/api-server/test/sse-abort.spec.ts (2 tests): a raw `http.request` client destroys its socket on the first response bytes; asserts the provider `create` call received an aborted AbortSignal, and that only the user-message insert happened (no assistant insert).
+- **Verified by:** api-server suite 47 passed + 2 env-gated skipped; whole-workspace `pnpm test` 125 passed + 2 skipped; typecheck green. Commit 83104be.
+- **Related:** Audit 3 F-04; BUG-002 (same handler, SSE error framing); Session 20.
+
+### BUG-006 — CI never runs the vitest test suite
+- **Severity / Status:** High / **Fixed** (2026-10-05, Session 20) — Audit 3 finding F-01.
+- **Root cause:** .github/workflows/browser-tests.yml only ran `pnpm run typecheck`, `verify:lightbox`, and `verify:flow`; the 123-test vitest suite existed but was never executed in CI, so a red suite could not fail a build.
+- **Fix applied:** new step "Unit and component tests (Audit 3 F-01 / BUG-006)" running `pnpm test` before the browser-harness steps. Workflow YAML re-parsed after the edit (all 7 steps present and ordered). The step command was verified locally: `pnpm test` exit 0, 123 passed + 2 env-gated skipped. Commit a14cd34.
+- **Test added:** none needed (the fix *is* running the existing tests in CI); verification = local run of the exact step command + YAML structure check.
+- **Files changed:** .github/workflows/browser-tests.yml.
 
 ### BUG-005 — DELETE conversations route validated a body-polluted params object
 - **Severity / Status:** Medium / Fixed (2026-10-05, Session 18) — Audit 2 findings F-01 & F-05.
