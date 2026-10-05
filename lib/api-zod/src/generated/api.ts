@@ -196,8 +196,12 @@ export const SendOpenaiMessageParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const sendOpenaiMessageBodyContentMax = 100000;
+
+
+
 export const SendOpenaiMessageBody = zod.object({
-  "content": zod.string(),
+  "content": zod.string().max(sendOpenaiMessageBodyContentMax).describe('Message text; rejected with 400 beyond 100,000 characters'),
   "mode": zod.string().optional(),
   "context": zod.string().optional().describe('Optional document or source context used to ground the response')
 })

@@ -49,6 +49,10 @@ export interface OpenaiConversationInput {
 }
 
 export interface OpenaiMessageInput {
+  /**
+     * Message text; rejected with 400 beyond 100,000 characters
+     * @maxLength 100000
+     */
   content: string;
   mode?: string;
   /** Optional document or source context used to ground the response */
