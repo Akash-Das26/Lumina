@@ -20,6 +20,25 @@ describe('renderMarkdown', () => {
     expect(img).toHaveAttribute('src', src);
   });
 
+  it('renders a data:image/webp URI as an img', () => {
+    const src = 'data:image/webp;base64,AAAA';
+    render(<div>{renderMarkdown(`![webp pic](${src})`)}</div>);
+    const img = screen.getByRole('img', { name: 'webp pic' });
+    expect(img).toHaveAttribute('src', src);
+  });
+
+  it('does not render an img for external image URLs (Audit 3 F-12)', () => {
+    render(<div>{renderMarkdown('![tracking](https://example.com/pixel.png)')}</div>);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    // The line stays visible as plain text rather than silently disappearing.
+    expect(screen.getByText(/tracking/)).toBeInTheDocument();
+  });
+
+  it('does not render an img for non-image data URIs', () => {
+    render(<div>{renderMarkdown('![x](data:text/html;base64,AAAA)')}</div>);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('renders blank lines as breaks without dropping content', () => {
     render(<div>{renderMarkdown('first\n\nsecond')}</div>);
     expect(screen.getByText('first')).toBeInTheDocument();
