@@ -13,7 +13,7 @@ An AI-powered chat and assistant application with conversation management, searc
 
 ## Stack
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
+- pnpm workspaces, Node.js 22 (see README for the supported range), TypeScript 5.9
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
 - Frontend: Vite + React 19 + Tailwind CSS v4

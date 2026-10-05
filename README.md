@@ -6,7 +6,7 @@ Lumina is an AI workspace with Chat, Search, Write, Artist, and Translate modes,
 
 Requirements:
 
-- Node.js 20+
+- Node.js 20+ (CI validates against Node 22)
 - pnpm 9+
 - PostgreSQL 14+
 - An OpenAI-compatible API key
