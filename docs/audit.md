@@ -93,13 +93,13 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: settle on the supported Node range in one place (README) and reference it; fix the features.md line cite.
   - Effort: Small.
 
-  **F-12 (Info, Security) — markdown renderer renders any `![...](uri)` src.**
+  **F-12 (Info, Security) — markdown renderer renders any `![...](uri)` src.** *Fixed (Session 20):* the generic renderer now emits an `<img>` only when the src starts with `data:image/` (the shape the app persists); any other URI — external URLs, non-image data URIs — stays as plain text. 3 new markdown.spec.tsx tests. Commit 4be24fe.
   - Location: artifacts/lumina/src/lib/markdown.tsx:24-34 (`<img src={src} .../>` with src from the assistant message).
   - Description: model output could embed external image URLs (tracking pixels / mixed content). React blocks `javascript:` URLs in img src and no `dangerouslySetInnerHTML` is used, so this is an Info-level hygiene note, not an XSS. The dedicated MessageBubble path (`extractImageSrc`) is used for generated images; only this generic renderer is affected.
   - Recommended fix (optional): restrict generic markdown images to `data:image/` URIs.
   - Effort: Small.
 
-  **F-13 (Info, Correctness) — non-numeric conversation id renders an empty page.**
+  **F-13 (Info, Correctness) — non-numeric conversation id renders an empty page.** *Fixed (Session 20):* chat-conversation.tsx now redirects to /chat when the route id is non-numeric (NaN) instead of rendering the disabled-query empty state; new chat-id-redirect.spec.tsx (2 tests). Commit bfdc974.
   - Location: artifacts/lumina/src/pages/chat-conversation.tsx:76 (`const id = params.id ? Number(params.id) : null;`) — `/chat/abc` yields NaN, the query is disabled, and the page shows the "Start the conversation" empty state instead of a not-found message.
   - Recommended fix: redirect to /chat when `Number.isNaN(id)`.
   - Effort: Small.
