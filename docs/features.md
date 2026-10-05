@@ -32,6 +32,7 @@ Living document: update statuses and add entries whenever features change. Never
 | Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,image,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-03 |
 | Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-04 |
 | Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/{lightbox-harness.tsx,index.html,stub-provider.mjs,cdp.mjs,chrome.mjs} | 2026-10-04 |
+| Automated test suite in CI | **Missing** | .github/workflows/browser-tests.yml runs only typecheck + browser harnesses; `pnpm test` is not run in CI (Audit 3 F-01) | 2026-10-05 |
 
 ## Feature details
 
@@ -56,7 +57,7 @@ Chat, Search, Write, Artist, Translate — each changes the system prompt.
 ### Source-backed Search
 Live public web sources injected into the model context.
 - **Status:** Done
-- **How it works:** `GET /api/openai/search?q=` fetches Wikipedia opensearch API and DuckDuckGo Instant Answer API (max 6 sources), returns title/url/snippet/domain. The frontend (`chat-conversation.tsx` ~line 124-138) fetches sources when in Search mode and appends them to the message `context`.
+- **How it works:** `GET /api/openai/search?q=` fetches Wikipedia opensearch API and DuckDuckGo Instant Answer API (max 6 sources), returns title/url/snippet/domain. The frontend (`chat-conversation.tsx`, handleSendMessage search branch) fetches sources when in Search mode and appends them to the message `context`.
 - **Key files/functions:** `searchPublicSources` in artifacts/api-server/src/routes/openai/index.ts; chat-conversation.tsx context assembly
 - **Inputs:** query string (min 2 chars). **Outputs:** `{query, sources[]}`. **Dependencies:** Wikipedia API, DuckDuckGo API (no API key needed).
 - **Known limitations:** public APIs only; returns 502 when both fail; sources are appended as text, not citations UI. Wikipedia and DuckDuckGo are fetched concurrently (Audit 2 F-02); a slow or failing source no longer delays or drops the other's results.

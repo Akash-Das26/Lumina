@@ -11,10 +11,43 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-003 | No DB pagination and no per-user ownership on conversations/messages | Low | Fixed | Audit 1 review of routes + db schema | 2026-10-02 (Session 3) |
 | BUG-004 | Conversations cursor pagination repeated the first page (gt vs lt on desc order) | Medium | Fixed | Session 4 live verification (2026-10-02) | 2026-10-02 (Session 4) |
 | BUG-005 | DELETE conversations route validated a body-polluted params object | Medium | Fixed | Audit 2 (2026-10-05) | 2026-10-05 (Session 18) |
+| BUG-006 | CI never runs the vitest test suite (only typecheck + browser harnesses) | High | Open | Audit 3 (2026-10-05) | — |
+| BUG-007 | Rate limiters keyed on proxy IP; no `trust proxy` handling | Medium | Open | Audit 3 (2026-10-05) | — |
+| BUG-008 | GET conversation returns all messages; images persisted as base64 data URIs in message text | Medium | Open | Audit 3 (2026-10-05) | — |
+| BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Open | Audit 3 (2026-10-05) | — |
+| BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Open | Audit 3 (2026-10-05) | — |
 
 ## Open
 
-_(none)_
+### BUG-010 — Unused root dependency `@replit/connectors-sdk`
+- **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-05.
+- **Where:** package.json:19 (`"dependencies": { "@replit/connectors-sdk": "^0.4.1" }`).
+- **Evidence:** no import of the package anywhere in artifacts/lib/scripts (`grep -rn "@replit/connectors-sdk" artifacts lib scripts` → nothing); nothing in the lockfile depends on it.
+- **Fix:** remove the dependency (verify no Replit deployment hook relies on it first). Effort: Small.
+
+### BUG-009 — Abandoned SSE streams never aborted
+- **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-04.
+- **Where:** artifacts/api-server/src/routes/openai/index.ts:345-366 (POST /openai/conversations/:id/messages provider loop).
+- **Symptom:** a client that disconnects mid-stream leaves the server consuming the provider stream (billable tokens) and writing to a dead socket until the model finishes; `grep -n "close\|abort\|destroy"` in the route returns nothing in the SSE handler.
+- **Fix:** wrap the provider call in an AbortController and abort from `req.on("close")` once SSE has started; skip the assistant-message persist if aborted before completion (or persist a truncated marker, by decision). Effort: Small.
+
+### BUG-008 — GET conversation returns all messages; images persisted as base64 data URIs
+- **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-03.
+- **Where:** artifacts/api-server/src/routes/openai/index.ts:195-200 (unbounded `select` on messages); :455/:473 (image markdown with full base64 data URI persisted as message content); consumers: chat page refetches on every send/generate.
+- **Symptom:** payload and DB storage grow without bound — a 1024×1024 PNG is ~1.5 MB of base64 per message; image-heavy conversations multiply refetch cost linearly and re-render everything on each invalidation. The list endpoints were paginated in BUG-003 but this endpoint was left fetching all.
+- **Fix:** bound the GET (last N messages or cursor pagination) and/or move image blobs out of the messages table (object storage / dedicated table). Effort: Medium.
+
+### BUG-007 — Rate limiters keyed on proxy IP; no `trust proxy` handling
+- **Severity / Status:** Medium / Open (Needs verification of production topology) — Audit 3 (2026-10-05), finding F-02.
+- **Where:** artifacts/api-server/src/app.ts:63-67 (limiter mounting); no `app.set("trust proxy", ...)` anywhere.
+- **Symptom:** behind the Vite dev proxy or any reverse proxy, `req.ip` is the proxy address, so every client shares one bucket for chatLimiter (30/min), authLimiter (10/15min) and registerLimiter (10/h) — lockout risk and lost per-user throttling. The middleware comment acknowledges the dev warning but not the shared-bucket behavior.
+- **Fix:** set `trust proxy` to the real hop count for the deployment and/or additionally key sensitive limiters on `req.userId`. Effort: Small.
+
+### BUG-006 — CI never runs the vitest test suite
+- **Severity / Status:** High / Open — Audit 3 (2026-10-05), finding F-01.
+- **Where:** .github/workflows/browser-tests.yml — steps are typecheck, `verify:lightbox`, `verify:flow`; no `pnpm test` anywhere in the workflow.
+- **Symptom:** the 123-test suite (api-server, lumina, api-client-react) only runs on developer machines; CI can pass while the suite is red, so regressions ship undetected.
+- **Fix:** add a `pnpm test` step (or job) before the browser harnesses; ~40s of CI time. Effort: Small.
 
 ## In Progress
 

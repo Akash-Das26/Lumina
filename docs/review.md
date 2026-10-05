@@ -4,6 +4,17 @@ Session-by-session log of work. New entries go at the TOP.
 
 ---
 
+### Session 19 - 2026-10-05
+- **Goal:** Deep read-only audit of the entire repository (Audit 3) — correctness, bugs/error handling, security, performance, code quality, tests, dependencies/build, docs/config, features-vs-reality. No source changes; only docs updated.
+- **State audited:** branch `fix/audit-2` @ `2284f2dc4dd43b19e3ce9ba1b67dd00bb88f190e`; tree clean except the pre-existing untracked `scripts/browser/decode-png.js`.
+- **Method:** full source read (routes, auth/session/password, middleware, db schema, chat page, auth provider, markdown renderer, custom-fetch, image-media); `pnpm test` (exit 0, 123 passed + 2 skipped), `pnpm typecheck` (exit 0), `pnpm audit` (4 dev-chain advisories, unchanged), api-server + lumina production builds (exit 0), `pnpm install --frozen-lockfile --dry-run` (lockfile in sync), `git log --all -S "sk-"` secret scan (clean), CI workflow review, dist/gitignore checks.
+- **Result:** 13 findings — 0 Critical, 1 High, 5 Medium, 5 Low, 2 Info. Full detail with file:line evidence in docs/audit.md "Audit 3 - 2026-10-05". Overall health 7.5/10.
+- **Key findings:** F-01 (High) CI never runs `pnpm test`; F-02 rate limiters keyed on proxy IP (no `trust proxy`); F-03 GET conversation returns all messages + base64 images stored in message text (unbounded payload); F-04 abandoned SSE streams never aborted; F-05/F-06/F-09 dead dependency + orphaned `lib/integrations/` duplicate package + unused cookie-parser; F-07 cookie lacks Secure; F-08 message content unbounded; F-10 stats/auth-me test gaps; F-11 doc version drift; F-12/F-13 Info-level frontend notes.
+- **Bugs filed:** BUG-006..BUG-010 (Open) in bug.md from F-01..F-05. F-07..F-13 (Low/Info) left in the audit entry for triage per tracker practice.
+- **Docs updated:** audit.md (Audit 3 entry), bug.md (5 new Open bugs), features.md (new "Automated test suite in CI — Missing" row; fixed stale line-range cite), review.md (this entry).
+- **Left unfinished:** nothing in scope — fixes deliberately deferred to a separate session after user review, per audit rules.
+- **Next steps:** fix session for BUG-006..010 (CI test step first), then Low/Info triage.
+
 ### Session 18 - 2026-10-05
 - **Goal:** Work through Audit 2 findings (F-01..F-10): severity order, reproduce → root cause → failing test → smallest fix → green suite → commit per finding, docs updated immediately. Branch `fix/audit-2` off `main` @ 9e2386a; no push/merge.
 - **Work done (per finding):**
