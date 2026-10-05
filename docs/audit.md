@@ -82,7 +82,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: remove from package.json.
   - Effort: Small.
 
-  **F-10 (Low, Tests) — coverage gaps: stats route and auth/me edge cases.**
+  **F-10 (Low, Tests) — coverage gaps: stats route and auth/me edge cases.** *Fixed (Session 20):* new stats-and-auth-me.spec.ts (6 tests) covering the stats payload shape (per-user counts + 5 most recent conversations, zeroed when empty, 401 without a session) and /auth/me (200 with the user, 401 once the user row is deleted despite the valid cookie signature, 401 without a session). Commit d189877.
   - Location: artifacts/api-server/test/ (10 spec files, none covering GET /openai/stats or /auth/me with a deleted user).
   - Evidence: `grep -rln stats artifacts/api-server/test/` → no matches; auth.spec.ts covers register/login/logout/409/429 but not the `/auth/me` 401-when-user-deleted path (routes/auth.ts:88-97).
   - Recommended fix: add a stats test (counts + scoping) and an /auth/me deleted-user test.
