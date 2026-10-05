@@ -71,7 +71,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: add `; Secure` when `NODE_ENV === "production"` (or behind a COOKIE_SECURE env override).
   - Effort: Small.
 
-  **F-08 (Low, Correctness) — unbounded message content.**
+  **F-08 (Low, Correctness) — unbounded message content.** *Fixed (Session 20):* `maxLength: 100000` declared on OpenaiMessageInput.content in openapi.yaml; orval codegen regenerated `SendOpenaiMessageBody` with `.max(100000)` (api-zod + api-client-react). The messages route already 400s on schema failure, so enforcement needed no route change. Regression spec message-content-limit.spec.ts (2 tests: 100,001 chars → 400 with no provider call and no insert; exactly 100,000 accepted). Verified failing-first by temporarily reverting the generated schema. Commit 1893c9b.
   - Location: lib/api-zod/src/generated/api.ts:200 (`"content": zod.string()`, no `.max()`); enforced nowhere in the messages route.
   - Evidence: only the global `express.json({ limit: "1mb" })` bounds a request; a 1 MB message is persisted verbatim and replayed into the provider context (history slice(-20)) on later turns, multiplying provider costs.
   - Recommended fix: add `.max(100_000)` (or similar) to content in openapi.yaml and regenerate; reject oversized messages with 400.
