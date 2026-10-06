@@ -96,9 +96,9 @@ API_PORT=19080 WEB_PORT=19173 pnpm dev
 pnpm run typecheck
 pnpm test
 pnpm audit
-PORT=5173 BASE_PATH=/ pnpm run build
+pnpm run build
 ```
 
-`pnpm test` runs the unit and component suites across the workspace (the API tests mock the database and need no Postgres; the env-gated integration suite is skipped unless `E2E_DATABASE_URL` is set). `pnpm audit` must report **no known vulnerabilities** — the workspace pins patched transitive versions with `overrides` in `pnpm-workspace.yaml`, so a new advisory there should be remediated there rather than ignored. CI runs the typecheck, the test suite, and the browser harnesses.
+`pnpm run build` typechecks and builds every package; it defaults `PORT` and `BASE_PATH` for the web builds (see `scripts/build.mjs`), so no variables need to be exported first. Set either explicitly to override, e.g. `BASE_PATH=/app pnpm run build`. `pnpm test` runs the unit and component suites across the workspace (the API tests mock the database and need no Postgres; the env-gated integration suite is skipped unless `E2E_DATABASE_URL` is set). `pnpm audit` must report **no known vulnerabilities** — the workspace pins patched transitive versions with `overrides` in `pnpm-workspace.yaml`, so a new advisory there should be remediated there rather than ignored. CI runs the typecheck, the test suite, and the browser harnesses.
 
 Actual AI responses and saved conversations require a reachable PostgreSQL database and a valid provider key. Keep those values in `.env`, not in source control.
