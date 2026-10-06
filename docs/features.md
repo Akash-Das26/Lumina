@@ -22,10 +22,10 @@ Living document: update statuses and add entries whenever features change. Never
 | Pricing page | Done | artifacts/lumina/src/pages/pricing.tsx | 2026-10-02 |
 | Sign-in / Sign-up pages | Done | artifacts/lumina/src/pages/sign-in.tsx, artifacts/lumina/src/pages/sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/components/auth-gate.tsx, artifacts/lumina/src/components/guest-only.tsx | 2026-10-02 |
 | Sign-out UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (account menu), artifacts/lumina/src/lib/auth-provider.tsx (`signOut`) | 2026-10-03 |
-| Authentication (backend) | Done | artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, lib/db/src/schema/users.ts | 2026-10-03 (auth endpoints rate limited) |
+| Authentication (backend) | Done | artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, lib/db/src/schema/users.ts | 2026-10-05 (auth endpoints rate limited; cookie Secure in production) |
 | Theme toggle | Done | artifacts/lumina/src/components/theme-toggle.tsx, artifacts/lumina/src/lib/theme-provider.tsx | 2026-10-02 |
 | API health check | Done | artifacts/api-server/src/routes/health.ts | 2026-10-02 |
-| API hardening (CORS allowlist, helmet, rate limits, 1MB body limit) | Done | artifacts/api-server/src/app.ts, artifacts/api-server/src/middleware/rate-limit.ts | 2026-10-03 |
+| API hardening (CORS allowlist, helmet, rate limits, 1MB body limit) | Done | artifacts/api-server/src/app.ts, artifacts/api-server/src/middleware/rate-limit.ts | 2026-10-05 (user-scoped AI limiter, trusted proxy hops) |
 | Dev launcher + API proxy | Done | scripts/dev-local.mjs | 2026-10-02 |
 | Shared API client + fetch layer | Done | lib/api-client-react/src/custom-fetch.ts, lib/api-client-react/src/generated/ | 2026-10-02 |
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
@@ -160,11 +160,11 @@ Account menu in the chat header with a sign-out action.
 ### Authentication (backend)
 Email/password auth with signed-cookie sessions and per-user data scoping.
 - **Status:** Done
-- **How it works:** `POST /api/auth/register|login` verify credentials (scrypt hashes, artifacts/api-server/src/lib/password.ts) and set an HMAC-signed `lumina_session` cookie (lib/session.ts, 30-day TTL, SESSION_SECRET env). `requireAuth` middleware gates all /api/openai routes and attaches `req.userId`; every conversation/message/stats query filters by it, and id-scoped routes 404 on other users' rows. GET conversations supports `?limit` (default 50, max 200) and `?cursor` (last id), newest first; GET messages same (default 200, max 1000, oldest first). `AUTH_AUTO_PROVISION=1` lets the first registered user adopt pre-auth conversations.
+- **How it works:** `POST /api/auth/register|login` verify credentials (scrypt hashes, artifacts/api-server/src/lib/password.ts) and set an HMAC-signed `lumina_session` cookie (lib/session.ts, 30-day TTL, SESSION_SECRET env; `HttpOnly; SameSite=Lax` plus `Secure` when `NODE_ENV=production`, overridable with `COOKIE_SECURE=0|1`). `requireAuth` middleware gates all /api/openai routes and attaches `req.userId`; every conversation/message/stats query filters by it, and id-scoped routes 404 on other users' rows. GET conversations supports `?limit` (default 50, max 200) and `?cursor` (last id), newest first; GET messages same (default 200, max 1000, oldest first). `AUTH_AUTO_PROVISION=1` lets the first registered user adopt pre-auth conversations.
 - **Key files:** artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, artifacts/api-server/src/routes/openai/index.ts, lib/db/src/schema/users.ts
 - **Dependencies:** zod (api-server), drizzle-orm, Node crypto; SESSION_SECRET required in .env.
 - **Known limitations:** no password reset; sessions cannot be individually revoked (secret-wide only). Login/register are now rate limited — see API hardening.
-- **Dates:** added 2026-10-02, last modified 2026-10-03 (auth limiters)
+- **Dates:** added 2026-10-02, last modified 2026-10-05 (Secure cookie in production)
 
 ### Theme toggle
 Light/dark switching.
@@ -181,9 +181,9 @@ Light/dark switching.
 ### API hardening
 CORS allowlist, helmet, 1MB body limit, per-route rate limits.
 - **Status:** Done
-- **How it works:** app.ts: same-origin CORS with optional `CORS_ORIGINS` env allowlist; `helmet()` defaults; `express.json({limit:"1mb"})`; `chatLimiter` (30/min) on search, generate-image, and conversations routes; `statsLimiter` (120/min) on stats; `authLimiter` (10 failed logins / 15 min per IP, successful logins not counted) on `/api/auth/login`; `registerLimiter` (10 accounts / 60 min per IP, all attempts counted) on `/api/auth/register`. `/api/auth/me` stays unlimited (frequent cheap read).
+- **How it works:** app.ts: same-origin CORS with optional `CORS_ORIGINS` env allowlist; `helmet()` defaults; `express.json({limit:"1mb"})`; `TRUST_PROXY_HOPS` (default 0) sets `app.set("trust proxy", hops)` so `req.ip` is the real client behind a reverse proxy. `chatLimiter` (30/min) is mounted inside the openai router after `requireAuth`, path-scoped to search, generate-image and conversations, and keyed on the signed-in user id composed with the IPv6-normalised client IP (`u<userId>:<ip>`) so authenticated clients cannot exhaust one another; `statsLimiter` (120/min) on stats; `authLimiter` (10 failed logins / 15 min per IP, successful logins not counted) on `/api/auth/login`; `registerLimiter` (10 accounts / 60 min per IP, all attempts counted) on `/api/auth/register`. The pre-auth limiters stay IP-keyed by design. `/api/auth/me` stays unlimited (frequent cheap read).
 - **Key files/functions:** artifacts/api-server/src/app.ts, artifacts/api-server/src/middleware/rate-limit.ts (`chatLimiter`, `statsLimiter`, `authLimiter`, `registerLimiter`)
-- **Dates:** added 2026-10-02, last modified 2026-10-03 (auth limiters)
+- **Dates:** added 2026-10-02, last modified 2026-10-05 (user-scoped AI limiter, trusted proxy hops)
 
 ### Dev launcher + API proxy
 Single command starts API + Vite with /api proxying.

@@ -65,7 +65,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: `git rm -r lib/integrations/` and drop the workspace glob, or give it a package.json and a purpose.
   - Effort: Small.
 
-  **F-07 (Low, Security) — session cookie without `Secure`.**
+  **F-07 (Low, Security) — session cookie without `Secure`.** *Fixed (Session 20, user-approved "secure in prod + env override" option):* `setSessionCookie`/`clearSessionCookie` now share a `sessionCookieAttributes()` helper that appends `; Secure` when `NODE_ENV=production`, stays off for plain-HTTP local dev, and honors a `COOKIE_SECURE=0|1` override (documented in .env.example). Regression spec session-cookie.spec.ts (5 tests: default-off, prod-on, both overrides, mirrored on the clearing cookie); verified failing-first. Commit 2ffc453.
   - Location: artifacts/api-server/src/lib/session.ts:50-53 — `Set-Cookie ... HttpOnly; SameSite=Lax; Max-Age=...`.
   - Description: over TLS the cookie is not flagged `Secure`, so a mixed-content downgrade or link prefetch could carry it. Dev runs plain HTTP, so this needs an env-aware flag rather than a hardcode. *Needs verification of the production TLS story.*
   - Recommended fix: add `; Secure` when `NODE_ENV === "production"` (or behind a COOKIE_SECURE env override).
