@@ -32,7 +32,7 @@ Living document: update statuses and add entries whenever features change. Never
 | Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,rate-limit-keying,image,message-images,conversation-pagination,message-content-limit,sse-abort,stats-and-auth-me,session-cookie,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-05 |
 | Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-04 |
 | Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/{lightbox-harness.tsx,index.html,stub-provider.mjs,cdp.mjs,chrome.mjs} | 2026-10-04 |
-| Automated test suite in CI | **Missing** | .github/workflows/browser-tests.yml runs only typecheck + browser harnesses; `pnpm test` is not run in CI (Audit 3 F-01) | 2026-10-05 |
+| Automated test suite in CI | Done | .github/workflows/browser-tests.yml now runs `pnpm test` before the browser harnesses (Audit 3 F-01 / BUG-006, 2026-10-05); step command verified locally (exit 0, 123 passed + 2 env-gated skipped at the time) | 2026-10-05 |
 
 ## Feature details
 
