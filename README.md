@@ -6,7 +6,7 @@ Lumina is an AI workspace with Chat, Search, Write, Artist, and Translate modes,
 
 Requirements:
 
-- Node.js 20+
+- Node.js 20+ (CI validates against Node 22)
 - pnpm 9+
 - PostgreSQL 14+
 - An OpenAI-compatible API key
@@ -74,6 +74,8 @@ createdb lumina
 
 If you followed the Ubuntu user/database setup above, make sure `.env` has the matching `lumina_user` connection string. `pnpm db:push` automatically reads the root `.env` and verifies the database connection while applying the schema. Do not start `pnpm dev` until it succeeds; otherwise database-backed API routes will fail because the tables are missing.
 
+> **Upgrading an existing database:** re-run `pnpm db:push` after pulling these changes. It adds the `message_images` table that stores generated-image bytes; new images are persisted there and referenced from message text. Images saved before the upgrade keep working as inline `data:` URIs — no backfill is required.
+
 Start the API and frontend together:
 
 ```bash
@@ -92,7 +94,11 @@ API_PORT=19080 WEB_PORT=19173 pnpm dev
 
 ```bash
 pnpm run typecheck
-PORT=5173 BASE_PATH=/ pnpm run build
+pnpm test
+pnpm audit
+pnpm run build
 ```
+
+`pnpm run build` typechecks and builds every package; it defaults `PORT` and `BASE_PATH` for the web builds (see `scripts/build.mjs`), so no variables need to be exported first. Set either explicitly to override, e.g. `BASE_PATH=/app pnpm run build`. `pnpm test` runs the unit and component suites across the workspace (the API tests mock the database and need no Postgres; the env-gated integration suite is skipped unless `E2E_DATABASE_URL` is set). `pnpm audit` must report **no known vulnerabilities** — the workspace pins patched transitive versions with `overrides` in `pnpm-workspace.yaml`, so a new advisory there should be remediated there rather than ignored. CI runs the typecheck, the test suite, and the browser harnesses.
 
 Actual AI responses and saved conversations require a reachable PostgreSQL database and a valid provider key. Keep those values in `.env`, not in source control.

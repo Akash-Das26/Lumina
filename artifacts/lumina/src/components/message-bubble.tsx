@@ -1,5 +1,6 @@
 import { cn } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
+import { imageExtension } from '@/lib/image';
 import { Bot, User, Loader2, Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
@@ -40,7 +41,7 @@ export function MessageBubble({
     if (!imageSrc) return;
     const link = document.createElement('a');
     link.href = imageSrc;
-    link.download = `lumina-image-${Date.now()}.png`;
+    link.download = `lumina-image-${Date.now()}.${imageExtension(imageSrc)}`;
     document.body.appendChild(link);
     link.click();
     link.remove();

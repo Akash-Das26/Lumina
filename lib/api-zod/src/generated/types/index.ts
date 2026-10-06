@@ -9,6 +9,7 @@
 export * from './authCredentials';
 export * from './authRegisterInput';
 export * from './authUser';
+export * from './getOpenaiConversationParams';
 export * from './healthStatus';
 export * from './listOpenaiConversationsParams';
 export * from './listOpenaiMessagesParams';
@@ -19,6 +20,7 @@ export * from './openaiError';
 export * from './openaiImageInput';
 export * from './openaiImageInputSize';
 export * from './openaiImageOutput';
+export * from './openaiImageOutputMediaType';
 export * from './openaiMessage';
 export * from './openaiMessageInput';
 export * from './openaiSearchResponse';

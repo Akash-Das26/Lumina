@@ -4,6 +4,10 @@
 //   E2E_DATABASE_URL=postgresql://postgres@127.0.0.1:5433/lumina pnpm test
 // Regression-coverage for BUG-004: the conversations list is newest-first, so
 // a cursor must fetch SMALLER ids (lt); gt() repeated the first page forever.
+// Also covers Audit 3 F-03: the conversation GET returns only a bounded
+// newest window (and pages older history by cursor), and image bytes are
+// owner-scoped. Mock-based specs never exercise real SQL ordering, so these
+// live checks are the backstop.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 if (process.env.E2E_DATABASE_URL) {
@@ -88,6 +92,86 @@ describe.skipIf(!process.env.E2E_DATABASE_URL)("pagination against a real databa
     // No id ever repeats across pages.
     const seen = new Set([...first, ...second, ...third]);
     expect(seen.size).toBe(first.length + second.length + third.length);
+  });
+
+  it("windows conversation messages newest-first and pages older by cursor (Audit 3 F-03)", async () => {
+    const created = await server.request("POST", "/api/openai/conversations", {
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ title: "Window test" }),
+    });
+    expect(created.status).toBe(201);
+    const convId = JSON.parse(created.body).id as number;
+
+    const { db, messages } = await import("@workspace/db");
+    for (let i = 1; i <= 5; i++) {
+      await db
+        .insert(messages)
+        .values({ conversationId: convId, role: "user", content: `m${i}` });
+    }
+
+    const page1 = JSON.parse(
+      (await server.request("GET", `/api/openai/conversations/${convId}?limit=2`, { headers: { cookie } })).body,
+    );
+    expect(page1.messages.map((m: { content: string }) => m.content)).toEqual(["m4", "m5"]);
+    expect(page1.nextCursor).toBe(page1.messages[0].id);
+
+    const page2 = JSON.parse(
+      (
+        await server.request(
+          "GET",
+          `/api/openai/conversations/${convId}?limit=2&cursor=${page1.nextCursor}`,
+          { headers: { cookie } },
+        )
+      ).body,
+    );
+    expect(page2.messages.map((m: { content: string }) => m.content)).toEqual(["m2", "m3"]);
+    expect(page2.nextCursor).toBe(page2.messages[0].id);
+
+    const page3 = JSON.parse(
+      (
+        await server.request(
+          "GET",
+          `/api/openai/conversations/${convId}?limit=2&cursor=${page2.nextCursor}`,
+          { headers: { cookie } },
+        )
+      ).body,
+    );
+    expect(page3.messages.map((m: { content: string }) => m.content)).toEqual(["m1"]);
+    expect(page3.nextCursor).toBeNull();
+  });
+
+  it("serves a generated image only to its owner (Audit 3 F-03)", async () => {
+    const created = await server.request("POST", "/api/openai/conversations", {
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ title: "Image ownership" }),
+    });
+    expect(created.status).toBe(201);
+    const convId = JSON.parse(created.body).id as number;
+
+    const { db, messages, messageImages } = await import("@workspace/db");
+    const [msg] = await db
+      .insert(messages)
+      .values({ conversationId: convId, role: "assistant", content: "" })
+      .returning();
+    const [image] = await db
+      .insert(messageImages)
+      .values({ messageId: msg.id, mediaType: "image/png", data: Buffer.from("PNGDATA").toString("base64") })
+      .returning();
+
+    const owner = await server.request("GET", `/api/openai/images/${image.id}.png`, { headers: { cookie } });
+    expect(owner.status).toBe(200);
+    expect(owner.body).toBe("PNGDATA");
+
+    const otherEmail = `img-other-${d}@test.dev`;
+    const reg = await server.request("POST", "/api/auth/register", {
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Other", email: otherEmail, password: "supersecret1" }),
+    });
+    const otherCookie = (reg.headers["set-cookie"]?.[0] ?? "").split(";")[0];
+    const stranger = await server.request("GET", `/api/openai/images/${image.id}.png`, {
+      headers: { cookie: otherCookie },
+    });
+    expect(stranger.status).toBe(404);
   });
 
   it("scopes listings to the owning user only", async () => {

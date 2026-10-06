@@ -24,14 +24,22 @@ export function renderMarkdown(content: string) {
       const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       if (imageMatch) {
         const [, alt, src] = imageMatch;
-        result.push(
-          <img
-            key={idx}
-            src={src}
-            alt={alt}
-            className="rounded-lg max-w-full h-auto my-3"
-          />
-        );
+        // Audit 3 F-12: only render data: image URIs found in assistant output.
+        // External URLs (e.g. tracking pixels, mixed content) stay as plain
+        // text. Audit 3 F-03: server-held images are referenced by their own
+        // same-origin route, which is likewise trusted.
+        if (src.startsWith('data:image/') || /^\/api\/openai\/images\/\d+(\.\w+)?$/.test(src)) {
+          result.push(
+            <img
+              key={idx}
+              src={src}
+              alt={alt}
+              className="rounded-lg max-w-full h-auto my-3"
+            />
+          );
+        } else {
+          result.push(<span key={idx}>{line}<br /></span>);
+        }
       } else if (line.trim()) {
         result.push(<span key={idx}>{line}<br /></span>);
       } else {

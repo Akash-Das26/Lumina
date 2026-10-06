@@ -130,10 +130,22 @@ export const SearchOpenaiSourcesResponse = zod.object({
 
 
 /**
- * @summary Get conversation with messages
+ * Returns the conversation plus up to `limit` of its most recent messages. Pass the previous response's `nextCursor` to page further back in history; `nextCursor` is null once every message has been returned.
+ * @summary Get conversation with a bounded window of messages (oldest first)
  */
 export const GetOpenaiConversationParams = zod.object({
   "id": zod.coerce.number()
+})
+
+export const getOpenaiConversationQueryLimitDefault = 50;
+export const getOpenaiConversationQueryLimitMax = 200;
+
+
+
+
+export const GetOpenaiConversationQueryParams = zod.object({
+  "limit": zod.coerce.number().min(1).max(getOpenaiConversationQueryLimitMax).default(getOpenaiConversationQueryLimitDefault),
+  "cursor": zod.coerce.number().min(1).optional().describe('Id of the oldest message already loaded; returns messages older than it')
 })
 
 export const GetOpenaiConversationResponse = zod.object({
@@ -147,7 +159,8 @@ export const GetOpenaiConversationResponse = zod.object({
   "role": zod.string(),
   "content": zod.string(),
   "createdAt": zod.coerce.date()
-}))
+})),
+  "nextCursor": zod.int().nullable().describe('Id of the oldest message in this page when older messages remain; null otherwise.')
 })
 
 
@@ -159,6 +172,17 @@ export const DeleteOpenaiConversationParams = zod.object({
 })
 
 export const DeleteOpenaiConversationResponse = zod.void()
+
+
+/**
+ * Serves the stored bytes with the detected media type. The id may carry an extension (e.g. `12.webp`); it is ignored for lookup.
+ * @summary Fetch a generated image's bytes (owner-scoped)
+ */
+export const GetOpenaiImageParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const GetOpenaiImageResponse = zod.unknown()
 
 
 /**
@@ -196,8 +220,12 @@ export const SendOpenaiMessageParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const sendOpenaiMessageBodyContentMax = 100000;
+
+
+
 export const SendOpenaiMessageBody = zod.object({
-  "content": zod.string(),
+  "content": zod.string().max(sendOpenaiMessageBodyContentMax).describe('Message text; rejected with 400 beyond 100,000 characters'),
   "mode": zod.string().optional(),
   "context": zod.string().optional().describe('Optional document or source context used to ground the response')
 })
@@ -216,7 +244,8 @@ export const GenerateOpenaiImageBody = zod.object({
 })
 
 export const GenerateOpenaiImageResponse = zod.object({
-  "b64_json": zod.string()
+  "b64_json": zod.string(),
+  "media_type": zod.enum(['image/png', 'image/webp', 'image/jpeg']).describe('Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised.')
 })
 
 

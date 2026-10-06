@@ -8,16 +8,21 @@ process.env.SESSION_SECRET ??= "test-session-secret-0123456789abcdef";
 
 const { startTestServer } = await import("./helpers/server");
 
-vi.mock("../src/lib/db", () => ({
+vi.mock("@workspace/db", () => ({
   db: {
     select: vi.fn(),
     insert: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
   },
+  users: { id: {}, email: {}, name: {}, passwordHash: {} },
+  conversations: { id: {}, userId: {}, title: {}, mode: {}, createdAt: {} },
+  messages: { conversationId: {}, createdAt: {}, id: {} },
+  messageImages: { id: {}, messageId: {}, mediaType: {}, data: {} },
 }));
 
 const { default: app } = await import("../src/app");
 const { createSessionToken } = await import("../src/lib/session");
-const { db } = await import("../src/lib/db");
 
 type TestServer = Awaited<ReturnType<typeof startTestServer>>;
 let server: TestServer;

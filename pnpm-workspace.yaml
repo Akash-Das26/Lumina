@@ -27,7 +27,6 @@ minimumReleaseAgeExclude:
 packages:
   - artifacts/*
   - lib/*
-  - lib/integrations/*
   - scripts
 
 catalog:
@@ -64,6 +63,18 @@ overrides:
   js-yaml: 4.3.2
   markdown-it: 14.3.1
   nanoid: 3.3.18
+  # BUG-011: advisories published after Audit 3
+  # proxy-addr is a production dependency of express/express-rate-limit; the
+  # fix matters because it defeats IP spoofing behind a trusted proxy
+  # (relevant to the F-02 rate-limit keying).
+  proxy-addr: 2.0.8
+  source-map-js: 1.2.2
+  fast-copy: 4.1.0
+  # Dev-only advisory (GHSA-rj75-hqrm-r3gf): @tailwindcss/typography pins
+  # postcss-selector-parser@6.0.10, which has quadratic selector parsing.
+  # 7.1.6 is a major bump; verified the Tailwind build still emits prose
+  # styles with it. Remove once @tailwindcss/typography ships >=7.
+  postcss-selector-parser: 7.1.6
   # Prune unused platform binaries (keeps installs lean)
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
@@ -147,7 +158,9 @@ overrides:
   "@expo/ngrok-bin>@expo/ngrok-bin-win32-x64": "-"
   # drizzle-kit uses esbuild internally on an older version that's vulnerable
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
-  esbuild: "0.27.3"
+  # BUG-011 (GHSA-g7r4-m6w7-qqqr): >=0.27.3 was itself in the advisory range
+  # for a Windows dev-server file-read; 0.28.2 is the first patched release.
+  esbuild: "0.28.2"
 
 allowBuilds:
   esbuild: true

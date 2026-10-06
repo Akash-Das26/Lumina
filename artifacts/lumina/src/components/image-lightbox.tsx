@@ -9,6 +9,7 @@ import {
 import { ChevronLeft, ChevronRight, Download, Move, ZoomIn, ZoomOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { imageExtension } from '@/lib/image';
 import {
   Dialog,
   DialogContent,
@@ -166,7 +167,9 @@ export function ImageLightbox({ images, index, onIndexChange, onClose }: ImageLi
     if (!current) return;
     const link = document.createElement('a');
     link.href = current.src;
-    link.download = `lumina-image-${Date.now()}.png`;
+    // Extension follows the image's real format (Audit 2 F-04 / Audit 3 F-03),
+    // matching the inline Download control instead of assuming PNG.
+    link.download = `lumina-image-${Date.now()}.${imageExtension(current.src)}`;
     document.body.appendChild(link);
     link.click();
     link.remove();

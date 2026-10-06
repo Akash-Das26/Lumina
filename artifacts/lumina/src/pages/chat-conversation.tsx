@@ -4,6 +4,7 @@ import {
   useGetOpenaiConversation,
   useCreateOpenaiConversation,
   useGenerateOpenaiImage,
+  getOpenaiConversation,
   getListOpenaiConversationsQueryKey,
   getGetOpenaiConversationQueryKey,
 } from '@workspace/api-client-react';
@@ -61,8 +62,14 @@ export default function ChatConversation() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user, signOut } = useAuth();
-  const id = params.id ? Number(params.id) : null;
-  const { data: conversation, isLoading } = useGetOpenaiConversation(id!, {
+  // Audit 3 F-13: /chat/abc yields NaN — redirect to /chat instead of
+  // rendering a conversation page whose queries are disabled.
+  const rawId = params.id ? Number(params.id) : null;
+  const id = rawId !== null && Number.isNaN(rawId) ? null : rawId;
+  useEffect(() => {
+    if (params.id && id === null) setLocation('/chat');
+  }, [params.id, id, setLocation]);
+  const { data: conversation, isLoading } = useGetOpenaiConversation(id!, undefined, {
     query: { enabled: !!id, queryKey: getGetOpenaiConversationQueryKey(id!) },
   });
   const createConv = useCreateOpenaiConversation();
@@ -77,6 +84,12 @@ export default function ChatConversation() {
   const [signingOut, setSigningOut] = useState(false);
   const [regeneratingId, setRegeneratingId] = useState<number | null>(null);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // Audit 3 F-03 / BUG-008: the conversation endpoint returns only a recent
+  // window of messages; older ones are loaded on demand via `nextCursor`.
+  const [olderMessages, setOlderMessages] = useState<TempMessage[]>([]);
+  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const loadedConversationId = useRef<number | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   useSeo({
     title: conversation ? `${conversation.title} — Lumina AI` : 'Conversation — Lumina AI',
@@ -87,6 +100,17 @@ export default function ChatConversation() {
   useEffect(() => {
     if (conversation) {
       setSelectedMode(conversation.mode as ModeKey);
+    }
+  }, [conversation]);
+
+  // Reset paging whenever the conversation identity changes so a previously
+  // loaded page never bleeds into a different conversation. Guarded by a ref
+  // so an ordinary refetch (same id) keeps the pages already loaded.
+  useEffect(() => {
+    if (conversation && loadedConversationId.current !== conversation.id) {
+      loadedConversationId.current = conversation.id;
+      setOlderMessages([]);
+      setNextCursor(conversation.nextCursor ?? null);
     }
   }, [conversation]);
 
@@ -131,7 +155,9 @@ export default function ChatConversation() {
               const updated = [...prev];
               updated[updated.length - 1] = {
                 role: 'assistant',
-                content: `![Generated image](data:image/png;base64,${result.b64_json})`,
+                // The server sniffs the real format (Audit 2 F-04); fall back to
+                // PNG when talking to an older API without media_type.
+                content: `![Generated image](data:${result.media_type ?? 'image/png'};base64,${result.b64_json})`,
                 isGenerating: false,
                 isStreaming: false,
               };
@@ -230,6 +256,31 @@ export default function ChatConversation() {
     );
   };
 
+  const loadEarlierMessages = async () => {
+    if (!id || nextCursor === null) return;
+    setLoadingEarlier(true);
+    try {
+      const page = await getOpenaiConversation(id, { cursor: nextCursor });
+      setOlderMessages((prev) => [
+        ...page.messages.map((m) => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+        })),
+        ...prev,
+      ]);
+      setNextCursor(page.nextCursor ?? null);
+    } catch (error) {
+      toast({
+        title: 'Could not load earlier messages',
+        description: error instanceof Error ? error.message : 'Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoadingEarlier(false);
+    }
+  };
+
   const exportConversation = (format: 'markdown' | 'json') => {
     if (!conversation) return;
     const filename = `${conversation.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'lumina-conversation'}.${format === 'markdown' ? 'md' : 'json'}`;
@@ -291,6 +342,7 @@ export default function ChatConversation() {
   };
 
   const allMessages: TempMessage[] = [
+    ...olderMessages,
     ...(conversation?.messages || []).map((m) => ({
       id: m.id,
       role: m.role as 'user' | 'assistant',
@@ -430,6 +482,22 @@ export default function ChatConversation() {
 
         {/* Messages Area */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          {!isLoading && nextCursor !== null && (
+            <div className="flex justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void loadEarlierMessages()}
+                disabled={loadingEarlier}
+                data-testid="button-load-earlier-messages"
+              >
+                {loadingEarlier ? (
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                ) : null}
+                {loadingEarlier ? 'Loading…' : 'Load earlier messages'}
+              </Button>
+            </div>
+          )}
           {isLoading && (
             <div className="flex items-center justify-center h-full">
               <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

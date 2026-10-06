@@ -208,13 +208,32 @@ paths:
     get:
       operationId: getOpenaiConversation
       tags: [openai]
-      summary: Get conversation with messages
+      summary: Get conversation with a bounded window of messages (oldest first)
+      description: >-
+        Returns the conversation plus up to `limit` of its most recent messages.
+        Pass the previous response's `nextCursor` to page further back in
+        history; `nextCursor` is null once every message has been returned.
       parameters:
         - name: id
           in: path
           required: true
           schema:
             type: number
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: number
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: cursor
+          in: query
+          required: false
+          description: Id of the oldest message already loaded; returns messages older than it
+          schema:
+            type: number
+            minimum: 1
       responses:
         "200":
           description: Conversation with messages
@@ -243,6 +262,40 @@ paths:
           description: Deleted
         "404":
           description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+        "401":
+          description: Not signed in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenaiError"
+
+  /openai/images/{id}:
+    get:
+      operationId: getOpenaiImage
+      tags: [openai]
+      summary: Fetch a generated image's bytes (owner-scoped)
+      description: >-
+        Serves the stored bytes with the detected media type. The id may carry
+        an extension (e.g. `12.webp`); it is ignored for lookup.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Image bytes
+          content:
+            image/png: {}
+            image/webp: {}
+            image/jpeg: {}
+        "404":
+          description: Not found or not owned by the caller
           content:
             application/json:
               schema:
@@ -481,6 +534,8 @@ components:
       properties:
         content:
           type: string
+          maxLength: 100000
+          description: Message text; rejected with 400 beyond 100,000 characters
         mode:
           type: string
         context:
@@ -530,12 +585,17 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/OpenaiMessage"
+        nextCursor:
+          type: integer
+          nullable: true
+          description: Id of the oldest message in this page when older messages remain; null otherwise.
       required:
         - id
         - title
         - mode
         - createdAt
         - messages
+        - nextCursor
 
     OpenaiImageInput:
       type: object
@@ -559,8 +619,13 @@ components:
       properties:
         b64_json:
           type: string
+        media_type:
+          type: string
+          enum: ["image/png", "image/webp", "image/jpeg"]
+          description: Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised.
       required:
         - b64_json
+        - media_type
 
     OpenaiStats:
       type: object

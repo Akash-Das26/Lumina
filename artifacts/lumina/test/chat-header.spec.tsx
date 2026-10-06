@@ -20,6 +20,7 @@ vi.mock('@workspace/api-client-react', () => ({
   getAuthMe: mocks.getAuthMe,
   logoutAuth: mocks.logoutAuth,
   useGetOpenaiConversation: () => ({ data: undefined, isLoading: false }),
+  getOpenaiConversation: vi.fn(),
   useCreateOpenaiConversation: () => ({ mutate: vi.fn() }),
   useGenerateOpenaiImage: () => ({ mutate: vi.fn(), isPending: false }),
   getListOpenaiConversationsQueryKey: () => ['conversations'],

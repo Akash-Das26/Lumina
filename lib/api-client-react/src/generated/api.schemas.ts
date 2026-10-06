@@ -49,6 +49,10 @@ export interface OpenaiConversationInput {
 }
 
 export interface OpenaiMessageInput {
+  /**
+     * Message text; rejected with 400 beyond 100,000 characters
+     * @maxLength 100000
+     */
   content: string;
   mode?: string;
   /** Optional document or source context used to ground the response */
@@ -73,6 +77,8 @@ export interface OpenaiConversationWithMessages {
   mode: string;
   createdAt: string;
   messages: OpenaiMessage[];
+  /** Id of the oldest message in this page when older messages remain; null otherwise. */
+  nextCursor: number | null;
 }
 
 export type OpenaiImageInputSize = typeof OpenaiImageInputSize[keyof typeof OpenaiImageInputSize];
@@ -93,8 +99,22 @@ export interface OpenaiImageInput {
   replaceMessageId?: number;
 }
 
+/**
+ * Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised.
+ */
+export type OpenaiImageOutputMediaType = typeof OpenaiImageOutputMediaType[keyof typeof OpenaiImageOutputMediaType];
+
+
+export const OpenaiImageOutputMediaType = {
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'image/jpeg': 'image/jpeg',
+} as const;
+
 export interface OpenaiImageOutput {
   b64_json: string;
+  /** Detected format of the returned bytes (magic-byte sniff); PNG when unrecognised. */
+  media_type: OpenaiImageOutputMediaType;
 }
 
 export interface OpenaiStats {
@@ -122,6 +142,19 @@ cursor?: number;
 
 export type SearchOpenaiSourcesParams = {
 q: string;
+};
+
+export type GetOpenaiConversationParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * Id of the oldest message already loaded; returns messages older than it
+ * @minimum 1
+ */
+cursor?: number;
 };
 
 export type ListOpenaiMessagesParams = {
