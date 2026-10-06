@@ -1,12 +1,39 @@
-import { mkdirSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readdirSync, writeFileSync } from "fs";
 import path from "path";
-import glob from "fast-glob";
 import chokidar from "chokidar";
 import type { FSWatcher } from "chokidar";
 import type { Plugin } from "vite";
 
 const MOCKUPS_DIR = "src/components/mockups";
 const GENERATED_MODULE = "src/.generated/mockup-components.ts";
+
+/**
+ * Recursively list `.tsx` files under `mockupsAbsDir`, as posix paths relative
+ * to `root`. Replaces the previous fast-glob call so the plugin pulls in no
+ * vulnerable glob dependency: it walks every depth, skips any entry whose name
+ * starts with `_` (directories and files alike), sorts the result for a stable
+ * generated module, and yields `[]` when the directory is absent.
+ */
+function listMockupFiles(mockupsAbsDir: string, root: string): string[] {
+  if (!existsSync(mockupsAbsDir)) return [];
+
+  const found: string[] = [];
+
+  const walk = (absDir: string): void => {
+    for (const entry of readdirSync(absDir, { withFileTypes: true })) {
+      if (entry.name.startsWith("_")) continue;
+      const abs = path.join(absDir, entry.name);
+      if (entry.isDirectory()) {
+        walk(abs);
+      } else if (entry.isFile() && entry.name.endsWith(".tsx")) {
+        found.push(path.relative(root, abs).split(path.sep).join("/"));
+      }
+    }
+  };
+
+  walk(mockupsAbsDir);
+  return found.sort();
+}
 
 interface DiscoveredComponent {
   globKey: string;
@@ -40,10 +67,7 @@ export function mockupPreviewPlugin(): Plugin {
   }
 
   async function discoverComponents(): Promise<Array<DiscoveredComponent>> {
-    const files = await glob(`${MOCKUPS_DIR}/**/*.tsx`, {
-      cwd: root,
-      ignore: ["**/_*/**", "**/_*.tsx"],
-    });
+    const files = listMockupFiles(getMockupsAbsDir(), root);
 
     return files.map((f) => ({
       globKey: "./" + f.slice("src/".length),
