@@ -15,12 +15,22 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../../lib/session";
 import { detectImageMediaType } from "../../lib/image-media";
+import { chatLimiter } from "../../middleware/rate-limit";
 
 const router: IRouter = Router();
 
 // Every conversation route is user-scoped (BUG-003): requests without a valid
 // session cookie are rejected before any handler runs.
 router.use(requireAuth);
+
+// Cost-bearing AI endpoints (chat streaming, image generation) are throttled
+// AFTER auth so the limiter can key on the signed-in user id (Audit 3 F-02 /
+// BUG-007): behind a shared proxy IP, users would otherwise exhaust one
+// common bucket and lock each other out. Path-scoped to match the previous
+// pre-auth coverage — the cheap `/openai/stats` read keeps only statsLimiter.
+router.use("/openai/conversations", chatLimiter);
+router.use("/openai/search", chatLimiter);
+router.use("/openai/generate-image", chatLimiter);
 
 type SearchSource = {
   title: string;

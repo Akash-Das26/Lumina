@@ -13,6 +13,18 @@ import {
 
 const app: Express = express();
 
+// Audit 3 F-02 / BUG-007: behind one or more reverse proxies every client
+// shares the proxy's socket address unless Express is told how many hops to
+// trust, which collapses all users into one rate-limit bucket (lockout risk)
+// and breaks per-client throttling. TRUST_PROXY_HOPS declares the number of
+// trusted proxy hops for this deployment (0 = direct, the safe default; 1 =
+// the typical single reverse proxy / the Vite dev proxy). With hops > 0,
+// req.ip comes from the X-Forwarded-For chain up to that hop.
+const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? "0");
+if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
+  app.set("trust proxy", trustProxyHops);
+}
+
 app.use(
   pinoHttp({
     logger,
@@ -56,13 +68,12 @@ app.use(helmet());
 app.use(express.json({ limit: "1mb" }));
 app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
-// Rate limits: `statsLimiter` covers the cheap read routes; `chatLimiter` the
-// AI/chat streaming and image-generation endpoints where abuse costs money;
-// `authLimiter`/`registerLimiter` blunt credential brute-forcing and mass
-// account creation. `/auth/me` is a cheap, frequent read and stays unlimited.
+// Rate limits: `statsLimiter` covers the cheap read routes; the cost-bearing
+// `chatLimiter` is mounted inside the openai router after requireAuth so it can
+// key on the signed-in user (Audit 3 F-02); `authLimiter`/`registerLimiter`
+// blunt credential brute-forcing and mass account creation. `/auth/me` is a
+// cheap, frequent read and stays unlimited.
 app.use("/api/openai/stats", statsLimiter);
-app.use(["/api/openai/search", "/api/openai/generate-image"], chatLimiter);
-app.use(/\/api\/openai\/conversations(\/.*)?$/, chatLimiter);
 app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", registerLimiter);
 
