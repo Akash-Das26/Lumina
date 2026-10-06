@@ -16,10 +16,16 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-008 | GET conversation returns all messages; images persisted as base64 data URIs in message text | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
+| BUG-011 | Newly published dependency advisories (`proxy-addr` critical in prod, plus 5 dev-chain) | High | Open | Audit 3 follow-up (2026-10-06) | — |
 
 ## Open
 
-_(none)_
+### BUG-011 — Newly published dependency advisories
+- **Severity / Status:** High / Open — surfaced 2026-10-06 while re-running `pnpm audit` after the Audit 3 fixes. **Not** caused by any change on this branch: the affected lockfile versions are unchanged since Audit 3 (`git diff d6d6ee1..HEAD -- pnpm-lock.yaml` shows no version changes for them), and all four advisories Audit 3 recorded are still present — the advisory database simply gained six entries.
+- **Where:** `proxy-addr@2.0.7` — production transitive dep of `express@5.2.1` and `express-rate-limit@8.7.0` — GHSA-jqcg-44mw-7w3h, *critical*: "proxy-addr vulnerable to IP spoofing via IPv4-mapped IPv6 trust subnet". Dev chain: `tinypool` ×2 (GHSA-5gmw-xhrv-c9v3, GHSA-85c8-ppgw-ccpr — critical), `source-map-js` (high), `fast-copy` and `postcss-selector-parser` (moderate). (`braces` high, `vitest`/`@vitest/mocker` moderate, `esbuild` low are the pre-existing Audit 3 four.)
+- **Symptom:** `pnpm audit` reports **10** advisories (3 critical, 2 high, 4 moderate, 1 low) where Audit 3 recorded 4. The `proxy-addr` one is directly relevant to the new rate-limit keying (BUG-007 / F-02): spoofable `req.ip` behind a proxy could undermine per-IP keys.
+- **Fix (deliberately not applied):** needs a dependency decision — bump `express`/`proxy-addr` and the vitest chain, or add `pnpm.overrides` (as BUG-001 did) — which is a dependency change outside the Audit 3 fix session and requires user sign-off. Most are dev-chain.
+- **Related:** BUG-001 (earlier advisory sweep); Audit 3 F-02; Session 20.
 
 ## In Progress
 
