@@ -45,16 +45,34 @@ export function verifySessionToken(token: string | undefined): number | null {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+/**
+ * Whether session cookies carry the `Secure` attribute (Audit 3 F-07).
+ * Defaults to on in production and off elsewhere, because dev serves plain
+ * HTTP on localhost and a Secure cookie would be silently dropped there.
+ * `COOKIE_SECURE=1|0` overrides explicitly, e.g. a TLS-terminating setup that
+ * runs with NODE_ENV unset. Read at call time so ops changes need no restart
+ * and tests can toggle it per case.
+ */
+function cookieSecure(): boolean {
+  if (process.env.COOKIE_SECURE === "1") return true;
+  if (process.env.COOKIE_SECURE === "0") return false;
+  return process.env.NODE_ENV === "production";
+}
+
+function sessionCookieAttributes(maxAgeSeconds: number): string {
+  return `Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}${cookieSecure() ? "; Secure" : ""}`;
+}
+
 export function setSessionCookie(res: Response, userId: number): void {
-  const maxAgeMs = SESSION_TTL_MS;
+  const maxAgeSeconds = Math.floor(SESSION_TTL_MS / 1000);
   res.setHeader(
     "Set-Cookie",
-    `${COOKIE_NAME}=${createSessionToken(userId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(maxAgeMs / 1000)}`,
+    `${COOKIE_NAME}=${createSessionToken(userId)}; ${sessionCookieAttributes(maxAgeSeconds)}`,
   );
 }
 
 export function clearSessionCookie(res: Response): void {
-  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  res.setHeader("Set-Cookie", `${COOKIE_NAME}=; ${sessionCookieAttributes(0)}`);
 }
 
 // Augment Express Request with the authenticated user id. Typed as required:
