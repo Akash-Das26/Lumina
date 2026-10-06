@@ -34,7 +34,7 @@ One entry per deep audit. Append new audits below.
   - Recommended fix: add a step (or separate job) running `pnpm test` before the browser harnesses; ~40s of CI time.
   - Effort: Small.
 
-  **F-02 (Medium, Security) — rate limiters keyed on proxy IP; no `trust proxy` configuration.**
+  **F-02 (Medium, Security) — rate limiters keyed on proxy IP; no `trust proxy` configuration.** *Fixed (Session 20, user-approved "env-tunable" option):* `TRUST_PROXY_HOPS` (default 0) now drives `app.set("trust proxy", hops)`, and the cost-bearing `chatLimiter` moved inside the openai router immediately after `requireAuth`, path-scoped to the AI routes, with a composite `u<userId>:<ip>` key generator (IPv6-normalised via `ipKeyGenerator`). Regression spec rate-limit-keying.spec.ts (3 tests; the user-keying test fails against an IP-only key — verified by reverting the generator). Commit bcc3081; BUG-007 closed.
   - Location: artifacts/api-server/src/app.ts:63-67 (limiter mounting); no `app.set("trust proxy", ...)` anywhere in the server.
   - Evidence: `grep -n "trust proxy" artifacts/api-server/src` → no matches. `req.ip` is the socket address; behind the Vite dev proxy or any reverse proxy every client shares one IP, so the 30/min chatLimiter, 10/15min authLimiter and 10/h registerLimiter buckets are shared across all users (lockout risk) and per-user throttling is lost. The code comment in middleware/rate-limit.ts acknowledges the dev warning but not the prod bucket-sharing. *Needs verification of the production topology; if the API is only ever reached same-origin without a proxy this is Low.*
   - Recommended fix: set `app.set("trust proxy", <hops>)` matching the deployment and/or key sensitive limiters on `req.userId` as well as IP.

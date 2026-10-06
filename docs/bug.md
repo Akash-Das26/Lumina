@@ -12,14 +12,12 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-004 | Conversations cursor pagination repeated the first page (gt vs lt on desc order) | Medium | Fixed | Session 4 live verification (2026-10-02) | 2026-10-02 (Session 4) |
 | BUG-005 | DELETE conversations route validated a body-polluted params object | Medium | Fixed | Audit 2 (2026-10-05) | 2026-10-05 (Session 18) |
 | BUG-006 | CI never runs the vitest test suite (only typecheck + browser harnesses) | High | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
-| BUG-007 | Rate limiters keyed on proxy IP; no `trust proxy` handling | Medium | Open | Audit 3 (2026-10-05) | — |
+| BUG-007 | Rate limiters keyed on proxy IP; no `trust proxy` handling | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-008 | GET conversation returns all messages; images persisted as base64 data URIs in message text | Medium | Open | Audit 3 (2026-10-05) | — |
 | BUG-009 | Abandoned SSE streams never aborted (billable provider work continues) | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 | BUG-010 | Unused root dependency `@replit/connectors-sdk` | Medium | Fixed | Audit 3 (2026-10-05) | 2026-10-05 (Session 20) |
 
 ## Open
-
-_(none)_
 
 ### BUG-008 — GET conversation returns all messages; images persisted as base64 data URIs
 - **Severity / Status:** Medium / Open — Audit 3 (2026-10-05), finding F-03.
@@ -27,23 +25,23 @@ _(none)_
 - **Symptom:** payload and DB storage grow without bound — a 1024×1024 PNG is ~1.5 MB of base64 per message; image-heavy conversations multiply refetch cost linearly and re-render everything on each invalidation. The list endpoints were paginated in BUG-003 but this endpoint was left fetching all.
 - **Fix:** bound the GET (last N messages or cursor pagination) and/or move image blobs out of the messages table (object storage / dedicated table). Effort: Medium.
 
-### BUG-007 — Rate limiters keyed on proxy IP; no `trust proxy` handling
-- **Severity / Status:** Medium / Open (Needs verification of production topology) — Audit 3 (2026-10-05), finding F-02.
-- **Where:** artifacts/api-server/src/app.ts:63-67 (limiter mounting); no `app.set("trust proxy", ...)` anywhere.
-- **Symptom:** behind the Vite dev proxy or any reverse proxy, `req.ip` is the proxy address, so every client shares one bucket for chatLimiter (30/min), authLimiter (10/15min) and registerLimiter (10/h) — lockout risk and lost per-user throttling. The middleware comment acknowledges the dev warning but not the shared-bucket behavior.
-- **Fix:** set `trust proxy` to the real hop count for the deployment and/or additionally key sensitive limiters on `req.userId`. Effort: Small.
-
-### BUG-006 — CI never runs the vitest test suite
-- **Severity / Status:** High / Open — Audit 3 (2026-10-05), finding F-01.
-- **Where:** .github/workflows/browser-tests.yml — steps are typecheck, `verify:lightbox`, `verify:flow`; no `pnpm test` anywhere in the workflow.
-- **Symptom:** the 123-test suite (api-server, lumina, api-client-react) only runs on developer machines; CI can pass while the suite is red, so regressions ship undetected.
-- **Fix:** add a `pnpm test` step (or job) before the browser harnesses; ~40s of CI time. Effort: Small.
-
 ## In Progress
 
 _(none)_
 
 ## Fixed
+
+### BUG-007 — Rate limiters keyed on proxy IP; no `trust proxy` handling
+- **Severity / Status:** Medium / Fixed (2026-10-05, Session 20) — Audit 3 finding F-02; user-approved "env-tunable" option.
+- **Where:** artifacts/api-server/src/app.ts (limiter mounting + `trust proxy`); artifacts/api-server/src/middleware/rate-limit.ts (key generator); artifacts/api-server/src/routes/openai/index.ts (limiter mount point); .env.example (`TRUST_PROXY_HOPS`).
+- **Symptom:** behind the Vite dev proxy or any reverse proxy, `req.ip` was the proxy address, so every client shared one bucket for chatLimiter (30/min), authLimiter (10/15 min) and registerLimiter (10/h) — lockout risk and lost per-user throttling.
+- **Root cause:** two independent gaps. (1) No `app.set("trust proxy", ...)` anywhere, so Express ignored `X-Forwarded-For` and reported the proxy socket address as `req.ip`. (2) `chatLimiter` was mounted in app.ts *before* the router and therefore before `requireAuth`, so its key generator ran while `req.userId` was still unset — user-scoped keying was impossible regardless of the generator.
+- **Fix applied:**
+  - `TRUST_PROXY_HOPS` env (default 0 = direct, safe) reads an integer hop count; when > 0 the server calls `app.set("trust proxy", hops)` so `req.ip` is the XFF entry that many hops in. Documented in .env.example.
+  - The cost-bearing `chatLimiter` is no longer mounted in app.ts. It is mounted inside the openai router immediately after `requireAuth`, path-scoped to the AI routes (`/openai/conversations`, `/openai/search`, `/openai/generate-image`) so the cheap `/openai/stats` read keeps only `statsLimiter`. Its `keyGenerator` now composes the signed-in user id with the client IP — `u<userId>:<ipKeyGenerator(req.ip)>` — falling back to IP alone. `ipKeyGenerator` (express-rate-limit v8) normalises IPv6 to /64 so clients cannot rotate within a subnet. Pre-auth limiters (`statsLimiter`, `authLimiter`, `registerLimiter`) stay IP-keyed deliberately (no user to key on; keying login failures on the target account would hand attackers a lockout lever).
+- **Test added:** artifacts/api-server/test/rate-limit-keying.spec.ts (3 tests): (1) with `TRUST_PROXY_HOPS=1`, requests from distinct X-Forwarded-For addresses get independent buckets; (2) a second signed-in user sharing the proxy IP keeps their own bucket after the first exhausts theirs (this test fails with an IP-only key — verified by temporarily reverting the generator to `ipKeyGenerator(req.ip)`); (3) a single user still gets 429 after exceeding 30/min.
+- **Verified by:** api-server suite 58 passed + 2 env-gated skipped; whole-workspace `pnpm test` 141 passed + 2 skipped; `pnpm typecheck` 0 errors; api-server production build green. Commit bcc3081.
+- **Related:** Audit 3 F-02; session-cookie auth from BUG-003; Session 20.
 
 ### BUG-010 — Unused root dependency `@replit/connectors-sdk`
 - **Severity / Status:** Medium / Fixed (2026-10-05, Session 20) — Audit 3 finding F-05.
