@@ -9,6 +9,7 @@
 export * from './authCredentials';
 export * from './authRegisterInput';
 export * from './authUser';
+export * from './getOpenaiConversationParams';
 export * from './healthStatus';
 export * from './listOpenaiConversationsParams';
 export * from './listOpenaiMessagesParams';

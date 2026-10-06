@@ -39,6 +39,17 @@ describe('renderMarkdown', () => {
     expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
+  it('renders a server-held generated image reference (Audit 3 F-03)', () => {
+    const src = '/api/openai/images/12.webp';
+    render(<div>{renderMarkdown(`![Generated image](${src})`)}</div>);
+    expect(screen.getByRole('img', { name: 'Generated image' })).toHaveAttribute('src', src);
+  });
+
+  it('does not render an img for a lookalike path outside the image route', () => {
+    render(<div>{renderMarkdown('![x](/api/other/images/12.png)')}</div>);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+  });
+
   it('renders blank lines as breaks without dropping content', () => {
     render(<div>{renderMarkdown('first\n\nsecond')}</div>);
     expect(screen.getByText('first')).toBeInTheDocument();

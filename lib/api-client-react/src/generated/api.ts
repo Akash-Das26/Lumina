@@ -23,6 +23,7 @@ import type {
   AuthCredentials,
   AuthRegisterInput,
   AuthUser,
+  GetOpenaiConversationParams,
   HealthStatus,
   ListOpenaiConversationsParams,
   ListOpenaiMessagesParams,
@@ -673,20 +674,30 @@ export function useSearchOpenaiSources<TData = Awaited<ReturnType<typeof searchO
 
 
 
-export const getGetOpenaiConversationUrl = (id: number,) => {
+export const getGetOpenaiConversationUrl = (id: number,
+    params?: GetOpenaiConversationParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/openai/conversations/${id}`
+  return stringifiedParams.length > 0 ? `/api/openai/conversations/${id}?${stringifiedParams}` : `/api/openai/conversations/${id}`
 }
 
 /**
- * @summary Get conversation with messages
+ * Returns the conversation plus up to `limit` of its most recent messages. Pass the previous response's `nextCursor` to page further back in history; `nextCursor` is null once every message has been returned.
+ * @summary Get conversation with a bounded window of messages (oldest first)
  */
-export const getOpenaiConversation = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<OpenaiConversationWithMessages> => {
+export const getOpenaiConversation = async (id: number,
+    params?: GetOpenaiConversationParams, options?: Parameters<typeof customFetch>[1]): Promise<OpenaiConversationWithMessages> => {
 
-  return customFetch<OpenaiConversationWithMessages>(getGetOpenaiConversationUrl(id),
+  return customFetch<OpenaiConversationWithMessages>(getGetOpenaiConversationUrl(id,params),
   {
     ...options,
     method: 'GET'
@@ -699,23 +710,25 @@ export const getOpenaiConversation = async (id: number, options?: Parameters<typ
 
 
 
-export const getGetOpenaiConversationQueryKey = (id: number,) => {
+export const getGetOpenaiConversationQueryKey = (id: number,
+    params?: GetOpenaiConversationParams,) => {
     return [
-    `/api/openai/conversations/${id}`
+    `/api/openai/conversations/${id}`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getGetOpenaiConversationQueryOptions = <TData = Awaited<ReturnType<typeof getOpenaiConversation>>, TError = ErrorType<OpenaiError>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpenaiConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetOpenaiConversationQueryOptions = <TData = Awaited<ReturnType<typeof getOpenaiConversation>>, TError = ErrorType<OpenaiError>>(id: number,
+    params?: GetOpenaiConversationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpenaiConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getGetOpenaiConversationQueryKey(id);
+  const queryKey =  queryOptions?.queryKey ?? getGetOpenaiConversationQueryKey(id,params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpenaiConversation>>> = ({ signal }) => getOpenaiConversation(id, { signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpenaiConversation>>> = ({ signal }) => getOpenaiConversation(id,params, { signal, ...requestOptions });
 
 
 
@@ -729,15 +742,16 @@ export type GetOpenaiConversationQueryError = ErrorType<OpenaiError>
 
 
 /**
- * @summary Get conversation with messages
+ * @summary Get conversation with a bounded window of messages (oldest first)
  */
 
 export function useGetOpenaiConversation<TData = Awaited<ReturnType<typeof getOpenaiConversation>>, TError = ErrorType<OpenaiError>>(
- id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpenaiConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ id: number,
+    params?: GetOpenaiConversationParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpenaiConversation>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getGetOpenaiConversationQueryOptions(id,options)
+  const queryOptions = getGetOpenaiConversationQueryOptions(id,params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -820,6 +834,84 @@ export const useDeleteOpenaiConversation = <TError = ErrorType<OpenaiError>,
       > => {
       return useMutation(getDeleteOpenaiConversationMutationOptions(options));
     }
+
+export const getGetOpenaiImageUrl = (id: string,) => {
+
+
+
+
+  return `/api/openai/images/${id}`
+}
+
+/**
+ * Serves the stored bytes with the detected media type. The id may carry an extension (e.g. `12.webp`); it is ignored for lookup.
+ * @summary Fetch a generated image's bytes (owner-scoped)
+ */
+export const getOpenaiImage = async (id: string, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
+
+  return customFetch<Blob>(getGetOpenaiImageUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetOpenaiImageQueryKey = (id: string,) => {
+    return [
+    `/api/openai/images/${id}`
+    ] as const;
+    }
+
+
+export const getGetOpenaiImageQueryOptions = <TData = Awaited<ReturnType<typeof getOpenaiImage>>, TError = ErrorType<OpenaiError>>(id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpenaiImage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetOpenaiImageQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getOpenaiImage>>> = ({ signal }) => getOpenaiImage(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getOpenaiImage>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetOpenaiImageQueryResult = NonNullable<Awaited<ReturnType<typeof getOpenaiImage>>>
+export type GetOpenaiImageQueryError = ErrorType<OpenaiError>
+
+
+/**
+ * @summary Fetch a generated image's bytes (owner-scoped)
+ */
+
+export function useGetOpenaiImage<TData = Awaited<ReturnType<typeof getOpenaiImage>>, TError = ErrorType<OpenaiError>>(
+ id: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getOpenaiImage>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetOpenaiImageQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getListOpenaiMessagesUrl = (id: number,
     params?: ListOpenaiMessagesParams,) => {

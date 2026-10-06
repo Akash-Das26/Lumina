@@ -23,6 +23,18 @@ export function extractImageSrc(content: string): string | undefined {
   return content.match(IMAGE_MARKDOWN)?.[1];
 }
 
+/**
+ * Download extension for an image src. A data URI carries its media type
+ * (Audit 2 F-04); a server-held reference carries the format as a `.ext`
+ * suffix (Audit 3 F-03). Falls back to PNG.
+ */
+export function imageExtension(src: string): string {
+  const dataUri = src.match(/^data:image\/([a-z0-9.+-]+);/i);
+  if (dataUri) return dataUri[1] === 'jpeg' ? 'jpg' : dataUri[1];
+  const suffix = src.match(/\.([a-z0-9]+)$/i);
+  return suffix ? suffix[1] : 'png';
+}
+
 export function MessageBubble({
   role,
   content,
@@ -40,11 +52,7 @@ export function MessageBubble({
     if (!imageSrc) return;
     const link = document.createElement('a');
     link.href = imageSrc;
-    // Extension follows the data URI's media type (Audit 2 F-04) instead of
-    // assuming every image is a PNG.
-    const match = imageSrc.match(/^data:image\/([a-z0-9.+-]+);/i);
-    const ext = match ? (match[1] === 'jpeg' ? 'jpg' : match[1]) : 'png';
-    link.download = `lumina-image-${Date.now()}.${ext}`;
+    link.download = `lumina-image-${Date.now()}.${imageExtension(imageSrc)}`;
     document.body.appendChild(link);
     link.click();
     link.remove();

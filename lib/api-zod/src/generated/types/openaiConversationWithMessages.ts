@@ -13,4 +13,6 @@ export interface OpenaiConversationWithMessages {
   mode: string;
   createdAt: Date;
   messages: OpenaiMessage[];
+  /** Id of the oldest message in this page when older messages remain; null otherwise. */
+  nextCursor: number | null;
 }

@@ -74,6 +74,8 @@ createdb lumina
 
 If you followed the Ubuntu user/database setup above, make sure `.env` has the matching `lumina_user` connection string. `pnpm db:push` automatically reads the root `.env` and verifies the database connection while applying the schema. Do not start `pnpm dev` until it succeeds; otherwise database-backed API routes will fail because the tables are missing.
 
+> **Upgrading an existing database:** re-run `pnpm db:push` after pulling these changes. It adds the `message_images` table that stores generated-image bytes; new images are persisted there and referenced from message text. Images saved before the upgrade keep working as inline `data:` URIs — no backfill is required.
+
 Start the API and frontend together:
 
 ```bash

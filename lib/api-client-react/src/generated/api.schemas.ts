@@ -77,6 +77,8 @@ export interface OpenaiConversationWithMessages {
   mode: string;
   createdAt: string;
   messages: OpenaiMessage[];
+  /** Id of the oldest message in this page when older messages remain; null otherwise. */
+  nextCursor: number | null;
 }
 
 export type OpenaiImageInputSize = typeof OpenaiImageInputSize[keyof typeof OpenaiImageInputSize];
@@ -140,6 +142,19 @@ cursor?: number;
 
 export type SearchOpenaiSourcesParams = {
 q: string;
+};
+
+export type GetOpenaiConversationParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * Id of the oldest message already loaded; returns messages older than it
+ * @minimum 1
+ */
+cursor?: number;
 };
 
 export type ListOpenaiMessagesParams = {

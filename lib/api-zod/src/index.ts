@@ -7,3 +7,4 @@ export * from "./generated/types";
 // zod schema, so re-export it explicitly to resolve the star-export
 // ambiguity (TS2308).
 export { ListOpenaiMessagesParams } from "./generated/api";
+export { GetOpenaiConversationParams } from "./generated/api";

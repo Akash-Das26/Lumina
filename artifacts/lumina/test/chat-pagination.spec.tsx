@@ -4,14 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatConversation from '@/pages/chat-conversation';
 
-const IMAGE_SRC = 'data:image/png;base64,QUJD';
-const IMAGE_CONTENT = `![Generated image](${IMAGE_SRC})`;
-
+// Audit 3 F-03 / BUG-008: the conversation endpoint returns only a recent
+// window; older messages load on demand via nextCursor.
 const mocks = vi.hoisted(() => ({
-  generateImageMutate: vi.fn(),
+  getOpenaiConversation: vi.fn(),
 }));
 
-// Mutable per-test conversation fixture.
 const conversation = vi.hoisted(() => ({
   data: null as
     | {
@@ -20,15 +18,16 @@ const conversation = vi.hoisted(() => ({
         mode: string;
         createdAt: string;
         messages: Array<{ id: number; conversationId: number; role: string; content: string; createdAt: string }>;
+        nextCursor: number | null;
       }
     | undefined,
 }));
 
 vi.mock('@workspace/api-client-react', () => ({
   useGetOpenaiConversation: () => ({ data: conversation.data, isLoading: false }),
-  getOpenaiConversation: vi.fn(),
+  getOpenaiConversation: mocks.getOpenaiConversation,
   useCreateOpenaiConversation: () => ({ mutate: vi.fn() }),
-  useGenerateOpenaiImage: () => ({ mutate: mocks.generateImageMutate, isPending: false }),
+  useGenerateOpenaiImage: () => ({ mutate: vi.fn(), isPending: false }),
   getListOpenaiConversationsQueryKey: () => ['conversations'],
   getGetOpenaiConversationQueryKey: (id: number) => ['conversation', id],
 }));
@@ -69,29 +68,28 @@ function renderPage() {
   );
 }
 
-const userMessage = (id: number, content: string) => ({
+const msg = (id: number, content: string) => ({
   id,
   conversationId: 1,
   role: 'user',
   content,
-  createdAt: new Date(Date.UTC(2026, 9, 5, 12, 0, 0)).toISOString(),
-});
-const assistantImageMessage = (id: number, content = IMAGE_CONTENT) => ({
-  id,
-  conversationId: 1,
-  role: 'assistant',
-  content,
-  createdAt: new Date(Date.UTC(2026, 9, 5, 12, 0, 1)).toISOString(),
+  createdAt: new Date(Date.UTC(2026, 9, 5, 12, 0, id)).toISOString(),
 });
 
 beforeEach(() => {
   conversation.data = {
     id: 1,
-    title: 'A painting of the moon',
-    mode: 'artist',
-    createdAt: new Date(Date.UTC(2026, 9, 5, 11, 59, 0)).toISOString(),
-    messages: [],
+    title: 'Windowed chat',
+    mode: 'chat',
+    createdAt: new Date(Date.UTC(2026, 9, 5, 11, 0, 0)).toISOString(),
+    messages: [msg(3, 'm3')],
+    nextCursor: 2,
   };
+  mocks.getOpenaiConversation.mockResolvedValue({
+    ...conversation.data,
+    messages: [msg(1, 'm1'), msg(2, 'm2')],
+    nextCursor: null,
+  });
 });
 
 afterEach(() => {
@@ -99,32 +97,29 @@ afterEach(() => {
   conversation.data = undefined;
 });
 
-describe('re-generate for persisted images (Audit 2 F-03)', () => {
-  it('shows Re-generate on a persisted image and regenerates it in place', async () => {
-    conversation.data!.messages = [userMessage(10, 'A painting of the moon'), assistantImageMessage(11)];
+describe('Load earlier messages (Audit 3 F-03)', () => {
+  it('shows the button when older messages remain and prepends the fetched page', async () => {
     renderPage();
 
-    const user = userEvent.setup();
-    const button = await screen.findByTestId('button-regenerate-image');
-    await user.click(button);
+    const button = await screen.findByTestId('button-load-earlier-messages');
+    expect(screen.getByText('m3')).toBeInTheDocument();
+    // m1/m2 are not loaded yet (they are older than this window).
+    expect(screen.queryByText('m2')).not.toBeInTheDocument();
 
-    await waitFor(() =>
-      expect(mocks.generateImageMutate).toHaveBeenCalledTimes(1),
-    );
-    const call = mocks.generateImageMutate.mock.calls[0][0] as {
-      data: { prompt: string; conversationId: number; replaceMessageId: number };
-    };
-    expect(call.data.prompt).toBe('A painting of the moon');
-    expect(call.data.conversationId).toBe(1);
-    expect(call.data.replaceMessageId).toBe(11);
+    await userEvent.setup().click(button);
+
+    expect(mocks.getOpenaiConversation).toHaveBeenCalledWith(1, { cursor: 2 });
+    await waitFor(() => expect(screen.getByText('m1')).toBeInTheDocument());
+    expect(screen.getByText('m2')).toBeInTheDocument();
+    // nextCursor is now null, so the button is gone.
+    expect(screen.queryByTestId('button-load-earlier-messages')).not.toBeInTheDocument();
   });
 
-  it('hides Re-generate when no preceding user message supplies a prompt', () => {
-    conversation.data!.messages = [assistantImageMessage(12)];
+  it('hides the button when the whole history already fits in one window', async () => {
+    conversation.data!.nextCursor = null;
     renderPage();
 
-    return waitFor(() => expect(screen.getByTestId('button-download-image')).toBeInTheDocument()).then(() => {
-      expect(screen.queryByTestId('button-regenerate-image')).not.toBeInTheDocument();
-    });
+    await screen.findByText('m3');
+    expect(screen.queryByTestId('button-load-earlier-messages')).not.toBeInTheDocument();
   });
 });

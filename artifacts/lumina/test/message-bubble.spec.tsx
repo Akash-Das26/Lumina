@@ -19,6 +19,12 @@ describe('extractImageSrc', () => {
     expect(extractImageSrc('just text')).toBeUndefined();
     expect(extractImageSrc('![alt](https://example.com/a.png) trailing')).toBeUndefined();
   });
+
+  it('returns the src of a server-held image reference (Audit 3 F-03)', () => {
+    expect(extractImageSrc('![Generated image](/api/openai/images/12.webp)')).toBe(
+      '/api/openai/images/12.webp',
+    );
+  });
 });
 
 describe('MessageBubble', () => {
@@ -79,6 +85,20 @@ describe('MessageBubble', () => {
     await user.click(screen.getByTestId('button-download-image'));
     const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
     expect(anchor.download.endsWith('.jpg')).toBe(true);
+  });
+
+  it('renders a server-held image and derives its download extension from the path (Audit 3 F-03)', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    const urlContent = '![Generated image](/api/openai/images/12.webp)';
+    render(<MessageBubble role="assistant" content={urlContent} />);
+
+    expect(screen.getByRole('img')).toHaveAttribute('src', '/api/openai/images/12.webp');
+    await user.click(screen.getByTestId('button-download-image'));
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download.endsWith('.webp')).toBe(true);
   });
 
   it('only offers re-generate when a handler is provided', async () => {

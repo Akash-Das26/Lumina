@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { and, asc, desc, eq, gt, lt, count } from "drizzle-orm";
-import { db, conversations, messages } from "@workspace/db";
+import { db, conversations, messages, messageImages } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { generateImageBuffer } from "@workspace/integrations-openai-ai-server/image";
 import {
   CreateOpenaiConversationBody,
   GetOpenaiConversationParams,
+  GetOpenaiConversationQueryParams,
   ListOpenaiMessagesParams,
   ListOpenaiConversationsQueryParams,
   ListOpenaiMessagesQueryParams,
@@ -14,7 +15,7 @@ import {
   GenerateOpenaiImageBody,
 } from "@workspace/api-zod";
 import { requireAuth } from "../../lib/session";
-import { detectImageMediaType } from "../../lib/image-media";
+import { detectImageMediaType, imageExtension } from "../../lib/image-media";
 import { chatLimiter } from "../../middleware/rate-limit";
 
 const router: IRouter = Router();
@@ -197,18 +198,42 @@ router.get("/openai/conversations/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: params.error.message });
     return;
   }
+  const query = GetOpenaiConversationQueryParams.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: query.error.message });
+    return;
+  }
   const conv = await findOwnedConversation(req.userId, params.data.id);
   if (!conv) {
     res.status(404).json({ error: "Conversation not found" });
     return;
   }
-  const msgs = await db
+  const { limit, cursor } = query.data;
+
+  // Audit 3 F-03 / BUG-008: return a bounded, newest-anchored window instead
+  // of the whole history (image messages used to carry ~1.5 MB data URIs, so
+  // every load shipped them). Newest-first over-fetch by one tells us whether
+  // older messages remain; the page is reversed to display order before
+  // responding, and `nextCursor` points at the oldest message returned.
+  const rows = await db
     .select()
     .from(messages)
-    .where(eq(messages.conversationId, conv.id))
-    .orderBy(asc(messages.createdAt));
-  res.json({ ...conv, messages: msgs });
-});// DELETE /openai/conversations/:id
+    .where(
+      and(
+        eq(messages.conversationId, conv.id),
+        cursor ? lt(messages.id, cursor) : undefined,
+      ),
+    )
+    .orderBy(desc(messages.id))
+    .limit(limit + 1);
+
+  const hasMore = rows.length > limit;
+  const page = rows.slice(0, limit).reverse();
+  const nextCursor = hasMore && page.length > 0 ? page[0].id : null;
+  res.json({ ...conv, messages: page, nextCursor });
+});
+
+// DELETE /openai/conversations/:id
 // Audit 2 (F-01, F-05): the id is taken from the path param only. The old
 // zod params schema accepted extra body fields, so a crafted DELETE body
 // could smuggle values past body-parsing validation. A plain numeric check
@@ -489,29 +514,48 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
     res.status(502).json({ error: detail });
     return;
   }
-  // Label the data URI by the bytes' real format (Audit 2 F-04): the provider
-  // is configured for PNG, but OpenAI-compatible providers may return WebP or
-  // JPEG, and a hardcoded label misstates the contract.
+  // Detect the bytes' real format (Audit 2 F-04): the provider is configured
+  // for PNG, but OpenAI-compatible providers may return WebP or JPEG, and a
+  // hardcoded label would misstate the media type and the file extension.
   const mediaType = detectImageMediaType(buffer);
   const b64 = buffer.toString("base64");
 
-  const imageMarkdown = `![Generated image](data:${mediaType};base64,${b64})`;
+  // Audit 3 F-03 / BUG-008: the bytes go to message_images and the message
+  // content keeps only a short reference the client renders and downloads
+  // (`/api/openai/images/<id>.<ext>`), so conversation loads and later
+  // provider context never carry the base64 payload. The extension is part of
+  // the reference so the download filename stays honest (Audit 2 F-04).
+  const imageReference = (imageId: number) =>
+    `![Generated image](/api/openai/images/${imageId}.${imageExtension(mediaType)})`;
 
   if (conv && replaceMessageId !== undefined) {
-    // Regenerate in place: overwrite the existing image message, no new rows.
+    // Regenerate in place: drop the previous blob, attach the new one and
+    // rewrite the reference so old bytes never linger as orphans.
+    await db.delete(messageImages).where(eq(messageImages.messageId, replaceMessageId));
+    const [image] = await db
+      .insert(messageImages)
+      .values({ messageId: replaceMessageId, mediaType, data: b64 })
+      .returning();
     await db
       .update(messages)
-      .set({ content: imageMarkdown })
+      .set({ content: imageReference(image.id) })
       .where(eq(messages.id, replaceMessageId));
   } else if (conv) {
     // Persist user prompt + assistant image together, only after generation
     // succeeds, so a failed generation never leaves an orphaned prompt.
     await db.insert(messages).values({ conversationId: conv.id, role: "user", content: prompt });
-    await db.insert(messages).values({
-      conversationId: conv.id,
-      role: "assistant",
-      content: imageMarkdown,
-    });
+    const [assistantMessage] = await db
+      .insert(messages)
+      .values({ conversationId: conv.id, role: "assistant", content: "" })
+      .returning();
+    const [image] = await db
+      .insert(messageImages)
+      .values({ messageId: assistantMessage.id, mediaType, data: b64 })
+      .returning();
+    await db
+      .update(messages)
+      .set({ content: imageReference(image.id) })
+      .where(eq(messages.id, assistantMessage.id));
 
     // Auto-title from the prompt if the conversation still has its default name.
     if (conv.title === "New Chat" || conv.title === "New conversation") {
@@ -526,6 +570,34 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
   }
 
   res.json({ b64_json: b64, media_type: mediaType });
+});
+
+// GET /openai/images/:id — serve a stored image's bytes (Audit 3 F-03 /
+// BUG-008). Owner-scoped: the image is only returned when its message belongs
+// to a conversation owned by the caller (404 otherwise, same as any other
+// user-scoped resource). The id may carry an extension (`12.webp`); only the
+// leading integer is significant. Served inline with a private cache header
+// so a shared proxy never retains another user's image.
+router.get("/openai/images/:id", async (req, res): Promise<void> => {
+  const match = /^(\d+)(?:\.\w+)?$/.exec(String(req.params.id));
+  const imageId = match ? Number(match[1]) : Number.NaN;
+  if (!Number.isInteger(imageId) || imageId <= 0) {
+    res.status(404).json({ error: "Image not found" });
+    return;
+  }
+  const [row] = await db
+    .select({ mediaType: messageImages.mediaType, data: messageImages.data })
+    .from(messageImages)
+    .innerJoin(messages, eq(messageImages.messageId, messages.id))
+    .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+    .where(and(eq(messageImages.id, imageId), eq(conversations.userId, req.userId)));
+  if (!row) {
+    res.status(404).json({ error: "Image not found" });
+    return;
+  }
+  res.setHeader("Content-Type", row.mediaType);
+  res.setHeader("Cache-Control", "private, max-age=86400");
+  res.send(Buffer.from(row.data, "base64"));
 });
 
 // GET /openai/stats — per-user usage summary.

@@ -25,8 +25,10 @@ export function renderMarkdown(content: string) {
       if (imageMatch) {
         const [, alt, src] = imageMatch;
         // Audit 3 F-12: only render data: image URIs found in assistant output.
-        // External URLs (e.g. tracking pixels, mixed content) stay as plain text.
-        if (src.startsWith('data:image/')) {
+        // External URLs (e.g. tracking pixels, mixed content) stay as plain
+        // text. Audit 3 F-03: server-held images are referenced by their own
+        // same-origin route, which is likewise trusted.
+        if (src.startsWith('data:image/') || /^\/api\/openai\/images\/\d+(\.\w+)?$/.test(src)) {
           result.push(
             <img
               key={idx}
