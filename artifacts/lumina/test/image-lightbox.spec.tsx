@@ -33,6 +33,32 @@ describe('ImageLightbox', () => {
     expect(screen.getByTestId('lightbox-counter')).toHaveTextContent('2 / 3');
   });
 
+  it('names the download after a server-held image format (Audit 3 F-03)', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    renderLightbox(0, { images: [{ src: '/api/openai/images/12.webp' }] });
+
+    await user.click(screen.getByTestId('button-lightbox-download'));
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download.endsWith('.webp')).toBe(true);
+    clickSpy.mockRestore();
+  });
+
+  it('names the download after a data URI media type and maps jpeg to .jpg', async () => {
+    const user = userEvent.setup();
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => {});
+    renderLightbox(0, { images: [{ src: 'data:image/jpeg;base64,AAAA' }] });
+
+    await user.click(screen.getByTestId('button-lightbox-download'));
+    const anchor = clickSpy.mock.instances[0] as HTMLAnchorElement;
+    expect(anchor.download.endsWith('.jpg')).toBe(true);
+    clickSpy.mockRestore();
+  });
+
   it('disables prev on the first image and next on the last', () => {
     renderLightbox(0);
     expect(screen.getByTestId('button-lightbox-prev')).toBeDisabled();
