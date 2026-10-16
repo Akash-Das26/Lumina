@@ -83,14 +83,24 @@ function shutdown(signal = 'SIGTERM') {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-for (const child of [api, web]) {
+for (const [child, name] of [
+  [api, 'API'],
+  [web, 'Vite'],
+]) {
   child.on('error', (error) => {
-    console.error('Unable to start local service:', error.message);
+    console.error(`Unable to start the ${name} service:`, error.message);
     shutdown();
   });
   child.on('exit', (code) => {
     if (!shuttingDown && code !== 0) {
-      console.error(`A local service exited with code ${code ?? 'unknown'}.`);
+      console.error(`${name} exited with code ${code ?? 'unknown'}.`);
+      // The API verifies the database before it listens, so an early exit here
+      // is usually a setup problem rather than a crash (BUG-013).
+      if (child === api) {
+        console.error(
+          'The API line above names the reason. For a database problem, fix DATABASE_URL in .env and run `pnpm db:push` — see README → Troubleshooting local setup.',
+        );
+      }
       shutdown();
     }
   });

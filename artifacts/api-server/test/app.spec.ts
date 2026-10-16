@@ -87,6 +87,35 @@ describe("api-server smoke", () => {
     expect(res.body).not.toMatch(/"code"|"origin"|"path"/);
   });
 
+  it("answers a malformed JSON body with a JSON 400, not an HTML stack page (BUG-013)", async () => {
+    const res = await server.request("POST", "/api/auth/register", {
+      headers: { "content-type": "application/json" },
+      body: "{ not json",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(res.body)).toEqual({ error: "Malformed request body." });
+    expect(res.body).not.toMatch(/<html|<pre|SyntaxError|at |\\.ts:/);
+  });
+
+  it("answers unknown /api paths with a JSON body, never Express's HTML page", async () => {
+    // The openai router's requireAuth guards every /api path that no route
+    // matches, so an anonymous request is a JSON 401...
+    const anonymous = await server.request("GET", "/api/does-not-exist");
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers["content-type"]).toContain("application/json");
+
+    // ...and a signed-in request reaches the JSON 404 handler.
+    const authed = await server.request("GET", "/api/does-not-exist", {
+      headers: { cookie: `lumina_session=${createSessionToken(1)}` },
+    });
+    expect(authed.status).toBe(404);
+    expect(authed.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(authed.body)).toEqual({ error: "Not found" });
+    expect(authed.body).not.toMatch(/<html|<pre/);
+  });
+
   it("requires authentication for conversation routes", async () => {
     const res = await server.request("GET", "/api/openai/conversations");
     expect(res.status).toBe(401);

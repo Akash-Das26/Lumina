@@ -11,7 +11,7 @@ import { useSeo } from '@/lib/seo';
 import { registerSchema } from '@/lib/auth-schemas';
 import {
   formatApiFieldErrors,
-  formatFormErrorMessage,
+  formatSubmitError,
   formatZodErrors,
   withoutFieldError,
   type FieldErrors,
@@ -20,6 +20,9 @@ import {
 type Field = 'name' | 'email' | 'password';
 
 const GENERIC_ERROR = 'Unable to create your account. Please try again.';
+// 409 (BUG-013): the address is already taken, so point at sign-in instead of
+// telling the user to "try again", which can never work.
+const DUPLICATE_EMAIL_ERROR = 'An account with this email already exists. Try signing in.';
 
 export default function SignUp() {
   useSeo({
@@ -81,7 +84,12 @@ export default function SignUp() {
       if (Object.keys(serverFieldErrors).length > 0) {
         setFieldErrors(serverFieldErrors);
       } else {
-        setError(formatFormErrorMessage(err, GENERIC_ERROR));
+        setError(
+          formatSubmitError(err, {
+            fallback: GENERIC_ERROR,
+            statusMessages: { 409: DUPLICATE_EMAIL_ERROR },
+          }),
+        );
       }
     } finally {
       setSubmitting(false);

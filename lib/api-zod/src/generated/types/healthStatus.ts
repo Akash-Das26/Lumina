@@ -5,7 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { HealthStatusDatabase } from './healthStatusDatabase';
 
 export interface HealthStatus {
   status: string;
+  /** Database readiness, reported by `/health`. */
+  database?: HealthStatusDatabase;
+  /** Safe, actionable summary when the API is degraded. */
+  message?: string;
 }

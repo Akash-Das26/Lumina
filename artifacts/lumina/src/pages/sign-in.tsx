@@ -11,7 +11,7 @@ import { useSeo } from '@/lib/seo';
 import { loginSchema } from '@/lib/auth-schemas';
 import {
   formatApiFieldErrors,
-  formatFormErrorMessage,
+  formatSubmitError,
   formatZodErrors,
   withoutFieldError,
   type FieldErrors,
@@ -75,7 +75,7 @@ export default function SignIn() {
       if (Object.keys(serverFieldErrors).length > 0) {
         setFieldErrors(serverFieldErrors);
       } else {
-        setError(formatFormErrorMessage(err, GENERIC_ERROR));
+        setError(formatSubmitError(err, { fallback: GENERIC_ERROR }));
       }
     } finally {
       setSubmitting(false);

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { loginSchema, registerSchema } from '@/lib/auth-schemas';
 import {
+  UNREACHABLE_MESSAGE,
   formatApiFieldErrors,
   formatFormErrorMessage,
+  formatSubmitError,
   formatZodErrors,
+  getHttpStatus,
   withoutFieldError,
   type FieldErrors,
 } from '@/lib/form-errors';
@@ -151,6 +154,78 @@ describe('formatFormErrorMessage', () => {
     expect(formatFormErrorMessage({ data: { error: [{ code: 'too_small' }] } }, FALLBACK)).toBe(
       FALLBACK,
     );
+  });
+
+  it('falls back for the server\'s own failure copy and any HTML error page', () => {
+    expect(formatFormErrorMessage({ data: { error: 'Internal server error' } }, FALLBACK)).toBe(
+      FALLBACK,
+    );
+    expect(
+      formatFormErrorMessage(
+        { data: { error: '<!DOCTYPE html><html><pre>Error: ...</pre></html>' } },
+        FALLBACK,
+      ),
+    ).toBe(FALLBACK);
+  });
+});
+
+describe('getHttpStatus', () => {
+  it('reads the status of a thrown API error', () => {
+    expect(getHttpStatus({ status: 409, data: {} })).toBe(409);
+    expect(getHttpStatus({ status: 500 })).toBe(500);
+  });
+
+  it('is null when the request never reached the server', () => {
+    expect(getHttpStatus(new TypeError('Failed to fetch'))).toBeNull();
+    expect(getHttpStatus(undefined)).toBeNull();
+    expect(getHttpStatus({ status: '409' })).toBeNull();
+  });
+});
+
+describe('formatSubmitError', () => {
+  const FALLBACK = 'Unable to create your account. Please try again.';
+  const DUPLICATE = 'An account with this email already exists. Try signing in.';
+  const options = { fallback: FALLBACK, statusMessages: { 409: DUPLICATE } };
+
+  it('shows the duplicate-email copy for a 409', () => {
+    expect(
+      formatSubmitError(
+        { status: 409, data: { error: 'An account with this email already exists' } },
+        options,
+      ),
+    ).toBe(DUPLICATE);
+  });
+
+  it('says the server is unreachable when no response arrived at all', () => {
+    expect(formatSubmitError(new TypeError('Failed to fetch'), options)).toBe(UNREACHABLE_MESSAGE);
+    expect(formatSubmitError(new Error('network down'), options)).toBe(UNREACHABLE_MESSAGE);
+  });
+
+  it('treats a gateway failure (502/503/504) as unreachable too', () => {
+    expect(
+      formatSubmitError({ status: 503, data: { error: 'The API server is not reachable.' } }, options),
+    ).toBe(UNREACHABLE_MESSAGE);
+    expect(formatSubmitError({ status: 504, data: 'gateway timeout' }, options)).toBe(
+      UNREACHABLE_MESSAGE,
+    );
+  });
+
+  it('keeps the generic copy for a 500 whose body describes the server failure', () => {
+    expect(
+      formatSubmitError({ status: 500, data: { error: 'Internal server error' } }, options),
+    ).toBe(FALLBACK);
+  });
+
+  it('passes other server messages (401, 429) through', () => {
+    expect(
+      formatSubmitError({ status: 401, data: { error: 'Invalid email or password' } }, options),
+    ).toBe('Invalid email or password');
+    expect(
+      formatSubmitError(
+        { status: 429, data: { error: 'Too many accounts created from this address, please try again later.' } },
+        options,
+      ),
+    ).toBe('Too many accounts created from this address, please try again later.');
   });
 });
 

@@ -69,14 +69,23 @@ export function formatApiFieldErrors<Field extends string = string>(
   return formatted;
 }
 
-// Banner text that only restates the status code reads as noise next to the
-// per-field messages, so it falls back to the caller's copy instead.
-const STATUS_ONLY_MESSAGES = new Set(['Validation failed']);
+/** Shown when the request never got an HTTP response at all (BUG-013). */
+export const UNREACHABLE_MESSAGE =
+  "Can't reach the server. Check your connection and try again.";
 
-/** True for serialised error payloads (raw JSON), which must never reach the UI. */
+// Banner text that only restates the status code or describes the server's own
+// failure reads as noise next to the per-field messages, so it falls back to the
+// caller's copy instead.
+const STATUS_ONLY_MESSAGES = new Set(['Validation failed', 'Internal server error']);
+
+/**
+ * True for serialised error payloads — raw JSON, or an HTML error page as
+ * Express's default handler used to return (BUG-013) — which must never reach
+ * the UI.
+ */
 function looksLikeRawPayload(message: string): boolean {
   const trimmed = message.trim();
-  return trimmed.startsWith('[') || trimmed.startsWith('{');
+  return trimmed.startsWith('[') || trimmed.startsWith('{') || trimmed.startsWith('<');
 }
 
 /**
@@ -92,4 +101,41 @@ export function formatFormErrorMessage(err: unknown, fallback: string): string {
     return fallback;
   }
   return trimmed;
+}
+
+/**
+ * The HTTP status of a thrown API error, or `null` when the request never
+ * reached the server. The API client throws an `ApiError` (with a numeric
+ * `status`) for every HTTP response; an offline browser, a stopped API or a DNS
+ * failure rejects the fetch itself and carries no status.
+ */
+export function getHttpStatus(err: unknown): number | null {
+  const status = asRecord(err)?.status;
+  return typeof status === 'number' ? status : null;
+}
+
+/**
+ * Gateway statuses: the API could not be reached by whatever sat in front of it
+ * (the Vite dev proxy answers 503 when the API process is down, and a real
+ * gateway answers 502/504). From the user's point of view that is the same
+ * story as a request that never arrived.
+ */
+const UNREACHABLE_STATUSES = new Set([502, 503, 504]);
+
+/**
+ * Banner copy for a failed submit (BUG-013). `statusMessages` maps a specific
+ * status code (e.g. 409 duplicate email) to copy; anything unrecognized falls
+ * back to the server's message or `fallback`, and a request that never reached
+ * the API says so instead of blaming the account.
+ */
+export function formatSubmitError(
+  err: unknown,
+  { fallback, statusMessages = {} }: {
+    fallback: string;
+    statusMessages?: Record<number, string>;
+  },
+): string {
+  const status = getHttpStatus(err);
+  if (status === null || UNREACHABLE_STATUSES.has(status)) return UNREACHABLE_MESSAGE;
+  return statusMessages[status] ?? formatFormErrorMessage(err, fallback);
 }

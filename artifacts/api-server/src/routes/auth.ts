@@ -10,6 +10,7 @@ import {
 } from "../lib/session";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { sendValidationError } from "../lib/validation";
+import { isUniqueViolation } from "../lib/database";
 
 const router: IRouter = Router();
 
@@ -69,10 +70,23 @@ router.post("/auth/register", async (req, res): Promise<void> => {
   }
 
   const passwordHash = await hashPassword(password);
-  const [user] = await db
-    .insert(users)
-    .values({ email: normalizedEmail, name, passwordHash })
-    .returning();
+
+  let user: { id: number; email: string; name: string };
+  try {
+    [user] = await db
+      .insert(users)
+      .values({ email: normalizedEmail, name, passwordHash })
+      .returning();
+  } catch (error) {
+    // Two registrations for the same address can pass the select above
+    // concurrently; the unique index on users.email then raises 23505, which is
+    // the same outcome as the duplicate check — a 409, not a 500 (BUG-013).
+    if (isUniqueViolation(error)) {
+      res.status(409).json({ error: "An account with this email already exists" });
+      return;
+    }
+    throw error;
+  }
 
   if (autoProvision) {
     await attachUserOrphansTo(user.id);

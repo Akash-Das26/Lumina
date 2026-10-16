@@ -68,20 +68,41 @@ describe('SignUp', () => {
     expect(queryClient.getQueryData(['auth', 'me'])).toEqual(user);
   });
 
-  it('shows the API error message in a banner and stays put on failure', async () => {
-    mocks.registerAuth.mockRejectedValue({ data: { error: 'Email already registered' } });
+  it('tells the user to sign in when the email is already registered (409)', async () => {
+    mocks.registerAuth.mockRejectedValue({
+      status: 409,
+      data: { error: 'An account with this email already exists' },
+    });
     renderSignUp();
 
     await fillAndSubmit();
 
     await waitFor(() =>
-      expect(screen.getByTestId('sign-up-error')).toHaveTextContent('Email already registered'),
+      expect(screen.getByTestId('sign-up-error')).toHaveTextContent(
+        'An account with this email already exists. Try signing in.',
+      ),
     );
     expect(mocks.setLocation).not.toHaveBeenCalled();
   });
 
-  it('falls back to a generic message when the error has no detail', async () => {
-    mocks.registerAuth.mockRejectedValue(new Error('network down'));
+  it('says the server is unreachable when the request never arrives (BUG-013)', async () => {
+    mocks.registerAuth.mockRejectedValue(new TypeError('Failed to fetch'));
+    renderSignUp();
+
+    await fillAndSubmit();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('sign-up-error')).toHaveTextContent(
+        "Can't reach the server. Check your connection and try again.",
+      ),
+    );
+  });
+
+  it('keeps the generic message for a server-side failure (500)', async () => {
+    mocks.registerAuth.mockRejectedValue({
+      status: 500,
+      data: { error: 'Internal server error' },
+    });
     renderSignUp();
 
     await fillAndSubmit();
@@ -90,6 +111,10 @@ describe('SignUp', () => {
       expect(screen.getByTestId('sign-up-error')).toHaveTextContent(
         'Unable to create your account. Please try again.',
       ),
+    );
+    // Nothing about the internals (or an HTML error page) reaches the banner.
+    expect(screen.getByTestId('sign-up-error').textContent ?? '').not.toMatch(
+      /Internal server error|<html|at |\.ts:/,
     );
   });
 

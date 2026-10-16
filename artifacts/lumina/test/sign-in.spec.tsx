@@ -124,7 +124,10 @@ describe('SignIn', () => {
   });
 
   it('shows the API error message and stays put on failure', async () => {
-    mocks.loginAuth.mockRejectedValue({ data: { error: 'Invalid email or password' } });
+    mocks.loginAuth.mockRejectedValue({
+      status: 401,
+      data: { error: 'Invalid email or password' },
+    });
     renderSignIn();
 
     await fillAndSubmit('ada@test.dev', 'wrongpassword');
@@ -135,8 +138,24 @@ describe('SignIn', () => {
     expect(mocks.setLocation).not.toHaveBeenCalled();
   });
 
-  it('falls back to a generic message when the error has no detail', async () => {
-    mocks.loginAuth.mockRejectedValue(new Error('network down'));
+  it('says the server is unreachable when the request never arrives (BUG-013)', async () => {
+    mocks.loginAuth.mockRejectedValue(new TypeError('Failed to fetch'));
+    renderSignIn();
+
+    await fillAndSubmit();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('sign-in-error')).toHaveTextContent(
+        "Can't reach the server. Check your connection and try again.",
+      ),
+    );
+  });
+
+  it('keeps the generic message for a server-side failure (500)', async () => {
+    mocks.loginAuth.mockRejectedValue({
+      status: 500,
+      data: { error: 'Internal server error' },
+    });
     renderSignIn();
 
     await fillAndSubmit();
