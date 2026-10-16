@@ -84,11 +84,61 @@ pnpm dev
 
 Open http://localhost:5173. The launcher starts the API on port 8080, Vite on port 5173, loads `.env`, proxies `/api/*` to the API, and shuts down both services together.
 
+The API checks the database **before** it starts listening: if PostgreSQL is unreachable or the schema was never pushed, it exits immediately with the reason and the fix (`pnpm db:push`) instead of starting a server whose every database-backed request would fail. Once it is running, the same check is available any time:
+
+```bash
+curl -s localhost:8080/api/health   # readiness: database reachable AND schema applied
+curl -s localhost:8080/api/healthz  # liveness: the process is up (no database access)
+```
+
+`/api/health` answers `{"status":"ok","database":"ok"}` when the setup is usable, or `503` with `"database":"unreachable"` / `"schema-missing"` plus the command that fixes it.
+
 If a port is already in use:
 
 ```bash
 API_PORT=19080 WEB_PORT=19173 pnpm dev
 ```
+
+## Troubleshooting local setup
+
+**The UI says "Unable to create your account. Please try again." or "Can't reach the server."**
+
+These are the API's own failure classes: the first is a server-side error (5xx), the second means the request never reached the API at all. Find the real cause in this order:
+
+```bash
+curl -s localhost:8080/api/health   # is the API up, and can it reach the database?
+```
+
+- `curl: command not found` / connection refused → the API is not running: check the `pnpm dev` terminal, or start it with `pnpm --filter @workspace/api-server run dev`.
+- `"database":"unreachable"` → PostgreSQL is not running, or `DATABASE_URL` in `.env` has the wrong host, port, user or password (see below).
+- `"database":"schema-missing"` → the database is reachable but empty: run `pnpm db:push`.
+
+Every 500 is also logged by the API itself, as one JSON line at `error` level with the request id, the request and the real error (including the stack). The client is never sent the stack, SQL text or connection details — that is what the banner hides, and the log line is where it lives.
+
+**`password authentication failed for user "…"`**
+
+`DATABASE_URL` does not match a role that exists in the running PostgreSQL, so nothing can connect. Check the role and its password, then fix `.env` (or reset the password):
+
+```bash
+psql -U postgres -c "\du"                                  # list roles
+psql -U postgres -c "ALTER ROLE lumina_user WITH PASSWORD 'new-password';"
+```
+
+`DATABASE_URL` must name the same user, password, host, port and database in one URL, e.g. `postgresql://lumina_user:new-password@localhost:5432/lumina`. Re-run `pnpm db:push` afterwards — until it succeeds, the tables do not exist.
+
+**`database "lumina" does not exist`**
+
+```bash
+createdb lumina            # or: psql -U postgres -c "CREATE DATABASE lumina;"
+```
+
+**`relation "users" does not exist`** (or `database: schema-missing`)
+
+The schema was never applied. `pnpm db:push` reads the root `.env`, applies every table and verifies the connection while doing it. Run it before `pnpm dev`, and re-run it after pulling changes that add tables.
+
+**The API exits at startup**
+
+That is intentional (see above): the printed line names the reason (`unreachable` or `schema-missing`) and the underlying driver error. Fix it and start again — no request has to fail first.
 
 ## Validate and build
 

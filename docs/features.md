@@ -22,14 +22,14 @@ Living document: update statuses and add entries whenever features change. Never
 | Pricing page | Done | artifacts/lumina/src/pages/pricing.tsx | 2026-10-02 |
 | Sign-in / Sign-up pages | Done | artifacts/lumina/src/pages/sign-in.tsx, artifacts/lumina/src/pages/sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/components/auth-gate.tsx, artifacts/lumina/src/components/guest-only.tsx | 2026-10-02 |
 | Sign-out UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (account menu), artifacts/lumina/src/lib/auth-provider.tsx (`signOut`) | 2026-10-03 |
-| Authentication (backend) | Done | artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, lib/db/src/schema/users.ts | 2026-10-05 (auth endpoints rate limited; cookie Secure in production) |
+| Authentication (backend) | Done | artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, lib/db/src/schema/users.ts | 2026-10-16 (BUG-013: duplicate email is 409 including the unique-violation race; failures are JSON) |
 | Theme toggle | Done | artifacts/lumina/src/components/theme-toggle.tsx, artifacts/lumina/src/lib/theme-provider.tsx | 2026-10-02 |
-| API health check | Done | artifacts/api-server/src/routes/health.ts | 2026-10-02 |
+| API health check | Done | artifacts/api-server/src/routes/{health,index}.ts, artifacts/api-server/src/lib/database.ts | 2026-10-16 (BUG-013: `/api/health` also checks the database; the API fails fast at startup) |
 | API hardening (CORS allowlist, helmet, rate limits, 1MB body limit) | Done | artifacts/api-server/src/app.ts, artifacts/api-server/src/middleware/rate-limit.ts | 2026-10-05 (user-scoped AI limiter, trusted proxy hops) |
-| Dev launcher + API proxy | Done | scripts/dev-local.mjs | 2026-10-02 |
+| Dev launcher + API proxy | Done | scripts/dev-local.mjs, artifacts/lumina/vite.config.ts | 2026-10-16 (BUG-013: labels the exited service; proxy answers a JSON 503 when the API is down) |
 | Shared API client + fetch layer | Done | lib/api-client-react/src/custom-fetch.ts, lib/api-client-react/src/generated/ | 2026-10-02 |
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
-| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,rate-limit-keying,image,message-images,conversation-pagination,message-content-limit,sse-abort,stats-and-auth-me,session-cookie,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-05 |
+| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,rate-limit-keying,image,message-images,conversation-pagination,message-content-limit,sse-abort,stats-and-auth-me,session-cookie,health,database-health,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-16 (BUG-013: health/readiness + error-contract specs) |
 | Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-04 |
 | Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/{lightbox-harness.tsx,index.html,stub-provider.mjs,cdp.mjs,chrome.mjs} | 2026-10-04 |
 | Automated test suite in CI | Done | .github/workflows/browser-tests.yml now runs `pnpm test` before the browser harnesses (Audit 3 F-01 / BUG-006, 2026-10-05); step command verified locally (exit 0, 123 passed + 2 env-gated skipped at the time) | 2026-10-05 |
@@ -146,9 +146,9 @@ Static pricing tiers.
 ### Sign-in / Sign-up pages
 Working auth forms backed by the auth API, with route guards.
 - **Status:** Done
-- **How it works:** forms call `loginAuth`/`registerAuth` from the generated client, surface API error messages, and on success seed the `['auth','me']` query cache and navigate to /chat. AuthProvider exposes `{user, status, signOut}` via /api/auth/me; AuthGate guards /chat routes (redirects to /sign-in); GuestOnly redirects signed-in users to /chat.
-- **Key files:** artifacts/lumina/src/pages/sign-in.tsx, sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/components/auth-gate.tsx, guest-only.tsx, App.tsx
-- **Dates:** added 2026-07-29, last modified 2026-10-02
+- **How it works:** forms call `loginAuth`/`registerAuth` from the generated client, surface API error messages, and on success seed the `['auth','me']` query cache and navigate to /chat. AuthProvider exposes `{user, status, signOut}` via /api/auth/me; AuthGate guards /chat routes (redirects to /sign-in); GuestOnly redirects signed-in users to /chat. Validation runs client-side before the request (inline per-field messages, BUG-012); submit failures show one banner with status-specific copy — `409` "An account with this email already exists. Try signing in.", unreachable API (no response, or 502-504 from the dev proxy) "Can't reach the server. Check your connection and try again.", otherwise the generic message (BUG-013).
+- **Key files:** artifacts/lumina/src/pages/sign-in.tsx, sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/lib/form-errors.ts, artifacts/lumina/src/lib/auth-schemas.ts, artifacts/lumina/src/components/auth-gate.tsx, artifacts/lumina/src/components/guest-only.tsx, artifacts/lumina/src/components/field-error.tsx, App.tsx
+- **Dates:** added 2026-07-29, last modified 2026-10-02; inline validation 2026-10-16 (Session 21), status-specific banners 2026-10-16 (Session 22)
 
 ### Sign-out UI
 Account menu in the chat header with a sign-out action.
@@ -163,8 +163,9 @@ Email/password auth with signed-cookie sessions and per-user data scoping.
 - **How it works:** `POST /api/auth/register|login` verify credentials (scrypt hashes, artifacts/api-server/src/lib/password.ts) and set an HMAC-signed `lumina_session` cookie (lib/session.ts, 30-day TTL, SESSION_SECRET env; `HttpOnly; SameSite=Lax` plus `Secure` when `NODE_ENV=production`, overridable with `COOKIE_SECURE=0|1`). `requireAuth` middleware gates all /api/openai routes and attaches `req.userId`; every conversation/message/stats query filters by it, and id-scoped routes 404 on other users' rows. GET conversations supports `?limit` (default 50, max 200) and `?cursor` (last id), newest first; GET messages same (default 200, max 1000, oldest first). `AUTH_AUTO_PROVISION=1` lets the first registered user adopt pre-auth conversations.
 - **Key files:** artifacts/api-server/src/routes/auth.ts, artifacts/api-server/src/lib/{session,password}.ts, artifacts/api-server/src/routes/openai/index.ts, lib/db/src/schema/users.ts
 - **Dependencies:** zod (api-server), drizzle-orm, Node crypto; SESSION_SECRET required in .env.
+- **Failure contract:** validation failures are `400 {error, fieldErrors, formErrors}`; a duplicate email is `409 {"error":"An account with this email already exists"}` — including the concurrent-registration race, where the unique email index raises `23505` (BUG-013; it used to be a 500); anything unexpected is a logged generic `500 {"error":"Internal server error"}` with no internals.
 - **Known limitations:** no password reset; sessions cannot be individually revoked (secret-wide only). Login/register are now rate limited — see API hardening.
-- **Dates:** added 2026-10-02, last modified 2026-10-05 (Secure cookie in production)
+- **Dates:** added 2026-10-02, last modified 2026-10-05 (Secure cookie in production); duplicate-email race + JSON failure contract 2026-10-16 (BUG-013)
 
 ### Theme toggle
 Light/dark switching.
@@ -174,9 +175,9 @@ Light/dark switching.
 
 ### API health check
 - **Status:** Done
-- **How it works:** `GET /api/healthz` returns `{status:"ok"}`.
-- **Key files:** artifacts/api-server/src/routes/health.ts
-- **Dates:** added 2026-07-29, last modified 2026-10-02
+- **How it works:** `GET /api/healthz` is a pure liveness probe (`{status:"ok"}`, no database access). `GET /api/health` is the readiness probe: it runs `select 1` and checks that the `users` table exists (5s bound) and answers `200 {status:"ok",database:"ok"}` or `503 {status:"degraded",database:"unreachable"|"schema-missing",message}` with actionable guidance. The same check runs **before** the API starts listening: an unreachable or unmigrated database makes the process exit 1 with a synchronous stderr message naming the cause and the fix, instead of a server that fails on the first request.
+- **Key files:** artifacts/api-server/src/routes/health.ts, artifacts/api-server/src/index.ts, artifacts/api-server/src/lib/database.ts
+- **Dates:** added 2026-07-29, last modified 2026-10-02; readiness + startup check added 2026-10-16 (BUG-013)
 
 ### API hardening
 CORS allowlist, helmet, 1MB body limit, per-route rate limits.
@@ -188,9 +189,16 @@ CORS allowlist, helmet, 1MB body limit, per-route rate limits.
 ### Dev launcher + API proxy
 Single command starts API + Vite with /api proxying.
 - **Status:** Done
-- **How it works:** scripts/dev-local.mjs spawns API (API_PORT, default 8080) and Vite (WEB_PORT, default 5173), loads .env, proxies /api/*, shuts both down together.
-- **Key files:** scripts/dev-local.mjs
-- **Dates:** added 2026-08-30, last modified 2026-10-02
+- **How it works:** scripts/dev-local.mjs spawns API (API_PORT, default 8080) and Vite (WEB_PORT, default 5173), loads .env, proxies /api/*, shuts both down together. It names which service exited and, when the API does, points at the README troubleshooting section. The Vite dev proxy answers a JSON `503 {"error":"The API server is not reachable."}` when the API process is down, so the UI can say "can't reach the server" instead of reporting a server-side failure.
+- **Key files:** scripts/dev-local.mjs, artifacts/lumina/vite.config.ts
+- **Dates:** added 2026-08-30, last modified 2026-10-02; exit labelling + proxy error response 2026-10-16 (BUG-013)
+
+### Error handling and diagnosability
+Every failure is logged with its real cause and answered with safe, specific JSON.
+- **Status:** Done
+- **How it works:** `middleware/error-handler.ts` is the last middleware: it logs each 500 through pino (request id, method, path, status, message, stack and wrapping `cause`) and answers `{"error":"Internal server error"}` — never a stack, SQL text, column name or connection detail; body-parser failures become JSON `400 {"error":"Malformed request body."}`/`413`, and unknown `/api` paths answer JSON instead of Express's HTML page. `lib/safe-error.ts` redacts anything URL-shaped (so logs cannot contain credentials) and flattens `cause` chains for Drizzle-wrapped driver errors. A pg pool `error` listener keeps the process alive when a backend connection drops. The auth forms map failures to specific banner copy: `409` → "An account with this email already exists. Try signing in.", no response / 502-504 → "Can't reach the server. Check your connection and try again.", anything else → the generic message; validation issues stay inline per field (BUG-012).
+- **Key files/functions:** artifacts/api-server/src/middleware/error-handler.ts, artifacts/api-server/src/lib/{safe-error,database}.ts, lib/db/src/index.ts (`setPoolErrorHandler`), artifacts/lumina/src/lib/form-errors.ts (`formatSubmitError`), artifacts/lumina/src/pages/{sign-up,sign-in}.tsx
+- **Dates:** added 2026-10-16 (BUG-013)
 
 ### Shared API client + fetch layer
 Typed React Query client generated by orval plus a hardened fetch wrapper.
