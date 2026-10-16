@@ -286,7 +286,7 @@ describe('ImageLightbox', () => {
 
 
   it('handleKeyDown accepts 0 to reset zoom', () => {
-    const { props } = renderLightbox(0);
+    renderLightbox(0);
     const img = screen.getByTestId('image-lightbox');
 
     fireEvent.keyDown(screen.getByRole('dialog'), { key: '0' });

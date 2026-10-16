@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatConversation from '@/pages/chat-conversation';
-import { CHAT_UNREACHABLE_MESSAGE, ChatSendError, streamMessage } from '@/lib/stream-message';
+import { CHAT_UNREACHABLE_MESSAGE, ChatSendError } from '@/lib/stream-message';
 
 // BUG-014: a failed send keeps the user's message with an inline "Message failed
 // to send" state and a Retry control, shows the API's mapped copy in the toast

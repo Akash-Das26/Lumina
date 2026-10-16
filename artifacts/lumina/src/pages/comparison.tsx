@@ -1,5 +1,5 @@
 import { Link, useParams } from 'wouter';
-import { ArrowLeft, ArrowRight, Check, ExternalLink, FileText, Search, Sparkles, X } from 'lucide-react';
+import { ArrowRight, Check, ExternalLink, FileText, Search, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getComparison, comparisons } from '@/lib/comparisons';
@@ -71,7 +71,7 @@ export default function ComparisonPage() {
           <div className="mx-auto max-w-5xl">
             <div className="mb-8 flex items-end justify-between gap-6"><div><p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Side by side</p><h2 className="mt-2 text-3xl font-bold">The details that change the decision</h2></div><p className="hidden max-w-xs text-right text-sm text-muted-foreground md:block">Designed to scan quickly on desktop or mobile.</p></div>
             <div className="grid gap-3">
-              {comparison.features.map((feature, index) => (
+              {comparison.features.map((feature) => (
                 <div key={feature.label} className="grid gap-3 rounded-2xl border border-border bg-card p-4 md:grid-cols-[1.2fr_1fr_1fr] md:items-center">
                   <div className="font-semibold">{feature.label}</div>
                   <div className="rounded-xl bg-primary/[0.07] p-3 text-sm"><span className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-primary">Lumina</span>{feature.lumina}</div>

@@ -9,7 +9,7 @@ import {
   getGetOpenaiConversationQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, FileText, LogOut } from 'lucide-react';
+import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, LogOut } from 'lucide-react';
 import { ConversationList } from '@/components/conversation-list';
 import { ModeSelector } from '@/components/mode-selector';
 import { ThemeToggle } from '@/components/theme-toggle';

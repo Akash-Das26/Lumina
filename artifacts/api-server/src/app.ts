@@ -7,7 +7,6 @@ import { logger } from "./lib/logger";
 import { errorHandler } from "./middleware/error-handler";
 import {
   authLimiter,
-  chatLimiter,
   registerLimiter,
   statsLimiter,
 } from "./middleware/rate-limit";

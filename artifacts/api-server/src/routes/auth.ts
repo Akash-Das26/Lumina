@@ -6,7 +6,6 @@ import {
   clearSessionCookie,
   requireAuth,
   setSessionCookie,
-  verifySessionToken,
 } from "../lib/session";
 import { hashPassword, verifyPassword } from "../lib/password";
 import { sendValidationError } from "../lib/validation";
