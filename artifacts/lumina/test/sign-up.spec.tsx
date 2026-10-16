@@ -68,7 +68,7 @@ describe('SignUp', () => {
     expect(queryClient.getQueryData(['auth', 'me'])).toEqual(user);
   });
 
-  it('shows the API error message and stays put on failure', async () => {
+  it('shows the API error message in a banner and stays put on failure', async () => {
     mocks.registerAuth.mockRejectedValue({ data: { error: 'Email already registered' } });
     renderSignUp();
 
@@ -113,5 +113,96 @@ describe('SignUp', () => {
   it('links to the sign-in page', () => {
     renderSignUp();
     expect(screen.getByTestId('link-sign-in')).toHaveAttribute('href', '/sign-in');
+  });
+
+  it('shows inline messages (never raw Zod output) for an invalid email and short password', async () => {
+    renderSignUp();
+
+    await fillAndSubmit('Ada Lovelace', 'bbjhbvb@ewfw', '123456');
+
+    expect(await screen.findByTestId('email-error')).toHaveTextContent(
+      'Please enter a valid email address (e.g. name@example.com)',
+    );
+    expect(screen.getByTestId('password-error')).toHaveTextContent(
+      'Password must be at least 8 characters',
+    );
+    // No network request for a client-side failure, and no banner.
+    expect(mocks.registerAuth).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('sign-up-error')).not.toBeInTheDocument();
+    expect(document.body.textContent ?? '').not.toMatch(
+      /invalid_format|too_small|"code"|origin|\/\(\?!/,
+    );
+  });
+
+  it('shows a message under each field for an empty form without calling the API', async () => {
+    renderSignUp();
+
+    await userEvent.setup().click(screen.getByTestId('button-sign-up'));
+
+    expect(await screen.findByTestId('name-error')).toHaveTextContent('Please enter your name');
+    expect(screen.getByTestId('email-error')).toHaveTextContent(
+      'Please enter a valid email address (e.g. name@example.com)',
+    );
+    expect(screen.getByTestId('password-error')).toHaveTextContent(
+      'Password must be at least 8 characters',
+    );
+    expect(mocks.registerAuth).not.toHaveBeenCalled();
+  });
+
+  it('wires the inline error to its input for assistive technology', async () => {
+    renderSignUp();
+
+    await fillAndSubmit('Ada Lovelace', 'bbjhbvb@ewfw', 'password123');
+
+    const email = await screen.findByTestId('input-email');
+    expect(email).toHaveAttribute('aria-invalid', 'true');
+    expect(email).toHaveAttribute('aria-describedby', 'email-error');
+    expect(screen.getByTestId('email-error')).toHaveAttribute('id', 'email-error');
+    expect(screen.getByTestId('input-password')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('validates a field when the user leaves it, before any submit', async () => {
+    renderSignUp();
+
+    const user = userEvent.setup();
+    await user.type(screen.getByTestId('input-email'), 'nope');
+    await user.tab();
+
+    expect(await screen.findByTestId('email-error')).toHaveTextContent(
+      'Please enter a valid email address (e.g. name@example.com)',
+    );
+    expect(mocks.registerAuth).not.toHaveBeenCalled();
+  });
+
+  it('clears a field error as soon as the user edits that field', async () => {
+    renderSignUp();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('button-sign-up'));
+    expect(await screen.findByTestId('name-error')).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('input-name'), 'Ada');
+
+    expect(screen.queryByTestId('name-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('email-error')).toBeInTheDocument();
+  });
+
+  it('renders server-returned field errors inline instead of a banner', async () => {
+    mocks.registerAuth.mockRejectedValue({
+      status: 400,
+      data: {
+        error: 'Validation failed',
+        fieldErrors: { email: ['Please enter a valid email address (e.g. name@example.com)'] },
+        formErrors: [],
+      },
+    });
+    renderSignUp();
+
+    await fillAndSubmit();
+
+    expect(await screen.findByTestId('email-error')).toHaveTextContent(
+      'Please enter a valid email address (e.g. name@example.com)',
+    );
+    expect(screen.queryByTestId('sign-up-error')).not.toBeInTheDocument();
   });
 });

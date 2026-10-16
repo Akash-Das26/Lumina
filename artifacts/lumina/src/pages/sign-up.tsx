@@ -4,9 +4,22 @@ import { Sparkles, User, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FieldError } from '@/components/field-error';
 import { registerAuth } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSeo } from '@/lib/seo';
+import { registerSchema } from '@/lib/auth-schemas';
+import {
+  formatApiFieldErrors,
+  formatFormErrorMessage,
+  formatZodErrors,
+  withoutFieldError,
+  type FieldErrors,
+} from '@/lib/form-errors';
+
+type Field = 'name' | 'email' | 'password';
+
+const GENERIC_ERROR = 'Unable to create your account. Please try again.';
 
 export default function SignUp() {
   useSeo({
@@ -20,21 +33,56 @@ export default function SignUp() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Field-level problems render under their input; `error` is only for
+  // form-level ones (server failure, network, email already registered).
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<Field>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const values = () => ({ name, email, password });
+
+  const edit = (field: Field) => {
+    setFieldErrors((prev) => withoutFieldError(prev, field));
+    setError(null);
+  };
+
+  // Validate one field as the user leaves it. The schema parses all three, but
+  // only the blurred field's message is applied (Blur must not accuse untouched
+  // inputs); the server re-validates everything on submit regardless.
+  const handleBlur = (field: Field) => {
+    const parsed = registerSchema.safeParse(values());
+    const issues = parsed.success ? {} : formatZodErrors<Field>(parsed.error);
+    setFieldErrors((prev) =>
+      issues[field] ? { ...prev, [field]: issues[field] } : withoutFieldError(prev, field),
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Client-side check first: instant feedback, no round trip. The server
+    // stays the source of truth because this step can be bypassed.
+    const parsed = registerSchema.safeParse(values());
+    if (!parsed.success) {
+      setFieldErrors(formatZodErrors<Field>(parsed.error));
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
-      const user = await registerAuth({ name, email, password });
+      const user = await registerAuth(parsed.data);
       queryClient.setQueryData(['auth', 'me'], user);
       setLocation('/chat');
     } catch (err) {
-      const message =
-        (err as { data?: { error?: string } })?.data?.error ?? 'Unable to create your account. Please try again.';
-      setError(message);
+      // A 400 carries `{ error, fieldErrors }`; per-field problems stay inline,
+      // everything else becomes one banner message.
+      const serverFieldErrors = formatApiFieldErrors<Field>(err);
+      if (Object.keys(serverFieldErrors).length > 0) {
+        setFieldErrors(serverFieldErrors);
+      } else {
+        setError(formatFormErrorMessage(err, GENERIC_ERROR));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -51,7 +99,8 @@ export default function SignUp() {
           <p className="text-muted-foreground">Start using Lumina in seconds</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        {/* noValidate: the browser's own bubbles would pre-empt the inline messages below. */}
+        <form onSubmit={handleSubmit} noValidate className="space-y-6">
           {error && (
             <p className="text-sm text-destructive" data-testid="sign-up-error" role="alert">
               {error}
@@ -66,12 +115,19 @@ export default function SignUp() {
               id="name"
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                edit('name');
+              }}
+              onBlur={() => handleBlur('name')}
               placeholder="Your name"
               required
+              aria-invalid={Boolean(fieldErrors.name)}
+              aria-describedby={fieldErrors.name ? 'name-error' : undefined}
               data-testid="input-name"
               className="h-12"
             />
+            <FieldError id="name-error" message={fieldErrors.name} data-testid="name-error" />
           </div>
 
           <div className="space-y-2">
@@ -83,12 +139,19 @@ export default function SignUp() {
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                edit('email');
+              }}
+              onBlur={() => handleBlur('email')}
               placeholder="you@example.com"
               required
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? 'email-error' : undefined}
               data-testid="input-email"
               className="h-12"
             />
+            <FieldError id="email-error" message={fieldErrors.email} data-testid="email-error" />
           </div>
 
           <div className="space-y-2">
@@ -100,11 +163,22 @@ export default function SignUp() {
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                edit('password');
+              }}
+              onBlur={() => handleBlur('password')}
               placeholder="••••••••"
               required
+              aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={fieldErrors.password ? 'password-error' : undefined}
               data-testid="input-password"
               className="h-12"
+            />
+            <FieldError
+              id="password-error"
+              message={fieldErrors.password}
+              data-testid="password-error"
             />
           </div>
 

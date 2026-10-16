@@ -9,18 +9,40 @@ import {
   verifySessionToken,
 } from "../lib/session";
 import { hashPassword, verifyPassword } from "../lib/password";
+import { sendValidationError } from "../lib/validation";
 
 const router: IRouter = Router();
 
+// BUG-012: messages are user-facing — these are the same strings the client
+// schemas in artifacts/lumina/src/lib/auth-schemas.ts use, so a field rejected
+// locally reads identically when the server rejects it. `z.string({ error })`
+// replaces Zod's jargon ("Invalid input: expected string, received undefined")
+// for a missing or non-string field with the regular message.
+const NAME_REQUIRED = "Please enter your name";
+const EMAIL_INVALID = "Please enter a valid email address (e.g. name@example.com)";
+const PASSWORD_TOO_SHORT = "Password must be at least 8 characters";
+
 const credentialsSchema = z
   .object({
-    email: z.string().email().max(254),
-    password: z.string().min(8).max(128),
+    email: z
+      .string({ error: EMAIL_INVALID })
+      .trim()
+      .toLowerCase()
+      .max(254, "Email must be 254 characters or fewer")
+      .pipe(z.email(EMAIL_INVALID)),
+    password: z
+      .string({ error: PASSWORD_TOO_SHORT })
+      .min(8, PASSWORD_TOO_SHORT)
+      .max(128, "Password must be 128 characters or fewer"),
   })
   .strict();
 
 const registerSchema = credentialsSchema.extend({
-  name: z.string().trim().min(1).max(100),
+  name: z
+    .string({ error: NAME_REQUIRED })
+    .trim()
+    .min(1, NAME_REQUIRED)
+    .max(100, "Name must be 100 characters or fewer"),
 });
 
 // Existing local databases may hold conversations without a userId. When
@@ -34,7 +56,7 @@ async function attachUserOrphansTo(userId: number): Promise<void> {
 router.post("/auth/register", async (req, res): Promise<void> => {
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendValidationError(res, parsed.error);
     return;
   }
   const { email, password, name } = parsed.data;
@@ -63,7 +85,7 @@ router.post("/auth/register", async (req, res): Promise<void> => {
 router.post("/auth/login", async (req, res): Promise<void> => {
   const parsed = credentialsSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendValidationError(res, parsed.error);
     return;
   }
   const { email, password } = parsed.data;

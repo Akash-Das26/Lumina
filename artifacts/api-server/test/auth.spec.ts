@@ -84,6 +84,41 @@ describe("auth routes", () => {
     expect(res.status).toBe(400);
   });
 
+  it("answers validation failures with clean field errors, never the raw Zod issues (BUG-012)", async () => {
+    const res = await post(server, "/api/auth/register", {
+      name: "  ",
+      email: "bbjhbvb@ewfw",
+      password: "123456",
+    });
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Validation failed",
+      fieldErrors: {
+        name: ["Please enter your name"],
+        email: ["Please enter a valid email address (e.g. name@example.com)"],
+        password: ["Password must be at least 8 characters"],
+      },
+      formErrors: [],
+    });
+    // The old `parsed.error.message` payload: codes, formats and regex patterns.
+    expect(res.body).not.toMatch(/invalid_format|too_small|pattern|"code"/);
+  });
+
+  it("answers invalid login payloads with the same structured shape", async () => {
+    const res = await post(server, "/api/auth/login", { email: "nope", password: "short" });
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Validation failed",
+      fieldErrors: {
+        email: ["Please enter a valid email address (e.g. name@example.com)"],
+        password: ["Password must be at least 8 characters"],
+      },
+      formErrors: [],
+    });
+  });
+
   it("returns 409 when the email is already registered", async () => {
     const res = await post(server, "/api/auth/register", {
       name: "Test",

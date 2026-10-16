@@ -63,7 +63,7 @@ describe("api-server smoke", () => {
     expect(res.status).toBe(200);
   });
 
-  it("POST /api/openai/conversations returns 400 for invalid body", async () => {
+  it("POST /api/openai/conversations returns 400 with a clean error shape for an invalid body", async () => {
     const res = await server.request("POST", "/api/openai/conversations", {
       headers: {
         "content-type": "application/json",
@@ -72,6 +72,19 @@ describe("api-server smoke", () => {
       body: JSON.stringify({ title: 123 }),
       });
     expect(res.status).toBe(400);
+
+    // BUG-012: schemas used to answer with `error: <issues serialised to JSON>`,
+    // which is what the sign-up form rendered verbatim. The response is now a
+    // structured, message-only shape.
+    const body = JSON.parse(res.body) as {
+      error: string;
+      fieldErrors: Record<string, string[]>;
+      formErrors: string[];
+    };
+    expect(body.error).toBe("Validation failed");
+    expect(body.fieldErrors.title).toEqual(["Invalid input: expected string, received number"]);
+    expect(body.formErrors).toEqual([]);
+    expect(res.body).not.toMatch(/"code"|"origin"|"path"/);
   });
 
   it("requires authentication for conversation routes", async () => {

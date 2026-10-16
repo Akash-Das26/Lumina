@@ -17,6 +17,7 @@ import {
 import { requireAuth } from "../../lib/session";
 import { detectImageMediaType, imageExtension } from "../../lib/image-media";
 import { chatLimiter } from "../../middleware/rate-limit";
+import { sendValidationError } from "../../lib/validation";
 
 const router: IRouter = Router();
 
@@ -139,7 +140,7 @@ router.get("/openai/search", async (req, res): Promise<void> => {
 router.get("/openai/conversations", async (req, res): Promise<void> => {
   const parsed = ListOpenaiConversationsQueryParams.safeParse(req.query);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendValidationError(res, parsed.error);
     return;
   }
   const { limit, cursor } = parsed.data;
@@ -167,7 +168,7 @@ router.get("/openai/conversations", async (req, res): Promise<void> => {
 router.post("/openai/conversations", async (req, res): Promise<void> => {
   const parsed = CreateOpenaiConversationBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    sendValidationError(res, parsed.error);
     return;
   }
   const [conv] = await db
@@ -195,12 +196,12 @@ async function findOwnedConversation(userId: number, id: number) {
 router.get("/openai/conversations/:id", async (req, res): Promise<void> => {
   const params = GetOpenaiConversationParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
+    sendValidationError(res, params.error);
     return;
   }
   const query = GetOpenaiConversationQueryParams.safeParse(req.query);
   if (!query.success) {
-    res.status(400).json({ error: query.error.message });
+    sendValidationError(res, query.error);
     return;
   }
   const conv = await findOwnedConversation(req.userId, params.data.id);
@@ -261,7 +262,7 @@ router.get(
   async (req, res): Promise<void> => {
     const params = ListOpenaiMessagesParams.safeParse(req.params);
     if (!params.success) {
-      res.status(400).json({ error: params.error.message });
+      sendValidationError(res, params.error);
       return;
     }
     const conv = await findOwnedConversation(req.userId, params.data.id);
@@ -271,7 +272,7 @@ router.get(
     }
     const parsed = ListOpenaiMessagesQueryParams.safeParse(req.query);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.message });
+      sendValidationError(res, parsed.error);
       return;
     }
     const { limit, cursor } = parsed.data;
@@ -298,12 +299,12 @@ router.post(
   async (req, res): Promise<void> => {
     const params = SendOpenaiMessageParams.safeParse(req.params);
     if (!params.success) {
-      res.status(400).json({ error: params.error.message });
+      sendValidationError(res, params.error);
       return;
     }
     const body = SendOpenaiMessageBody.safeParse(req.body);
     if (!body.success) {
-      res.status(400).json({ error: body.error.message });
+      sendValidationError(res, body.error);
       return;
     }
 
@@ -462,7 +463,7 @@ router.post(
 router.post("/openai/generate-image", async (req, res): Promise<void> => {
   const body = GenerateOpenaiImageBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: body.error.message });
+    sendValidationError(res, body.error);
     return;
   }
   const { prompt, size: requestedSize, conversationId, replaceMessageId } = body.data;
