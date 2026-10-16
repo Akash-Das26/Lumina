@@ -4,6 +4,17 @@ Session-by-session log of work. New entries go at the TOP.
 
 ---
 
+### Session 25 - 2026-10-16 (Audit 4 A3 / BUG-017: one image-src allowlist for both render paths)
+- **Goal:** work through Audit 4 findings in priority order on a new branch `fix/audit4-findings` cut from `fix/ci-lint-5xx` (main is still unmerged — chosen target, reported to the user). Baseline before touching anything: `pnpm test` exit 0 (316 passed + 4 env-gated skipped), `pnpm typecheck` exit 0, `pnpm lint` exit 0 (0 errors, 4 warnings).
+- **Reproduced first:** added the A3 cases to `message-bubble.spec.tsx` and ran them against the untouched code → **4 failed / 15 passed** (remote http/https, `javascript:` + mixed case, `data:text/html`, lookalike path, and the component case showing an `<img>` + lightbox/download controls for a remote URL).
+- **Root cause:** two image paths, one rule — `renderMarkdown` had the Audit 3 F-12 allowlist, but `extractImageSrc` (bubble, lightbox items, download) matched any src in `![x](…)`.
+- **Fix (smallest change):** new `isAllowedImageSrc()` exported from `lib/markdown.tsx` (`data:image/*` + `/api/openai/images/<id>.<ext>`), called by both paths; everything else falls back to the plain-text line. Remote http(s) images stay plain text (allowlist, no proxy — tradeoff written up in BUG-017).
+- **Tests run:** the 4 new cases pass; whole-workspace `pnpm test` exit 0 — **320 passed + 4 skipped** (6 + 164 + 150, up from 316); `pnpm typecheck` exit 0; `pnpm lint` exit 0 (0 errors, 4 pre-existing warnings).
+- **Docs:** bug.md (BUG-017 → Fixed, summary row + entry), audit.md (A3 → Fixed), features.md (Image generation UI row/detail + tests row), this entry.
+- **Commit:** `Fix message image sources behind one allowlist (BUG-017, Audit 4 A3)` — fix + failing-first tests + docs, no push, no merge.
+
+---
+
 ### Session 24 - 2026-10-16 (follow-ups: upstream 5xx → 502, gateway failures keep the composer text, CI lint + real database, marketing-page check)
 - **Goal:** four follow-up requests on top of BUG-014, on a new branch `fix/ci-lint-5xx` cut from `fix/auth-and-provider-errors` (no push, no merge): (1) map an upstream 5xx to a retryable **502** "The AI service is temporarily unavailable. Please try again." while keeping the real status and cause in the server log (redacted), with unit/route tests and the mapped copy in the toast; (2) treat a **502/503 from a proxy in front of the API** as *unsent* so the composer keeps the typed text whenever nothing was persisted; (3) make CI start PostgreSQL, run `pnpm db:push` and set `E2E_DATABASE_URL` so the 4 env-gated integration tests run on every PR (still skipped locally when the variable is unset); (4) add **ESLint** (recommended + TypeScript + React hooks) as a dev dependency with a root `lint` script wired into CI, fixing only what is trivially safe and listing the rest. Plus a review request: summarise the 11-commit diff on `fix/auth-and-provider-errors` file by file, and check the landing, pricing and comparison pages for raw error/payload text reaching the user.
 - **Fixes:**

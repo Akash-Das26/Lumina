@@ -22,6 +22,7 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-014 | Placeholder provider key starts the app, and the provider's own 401 text (echoing part of the key) is shown to the user | High | Fixed | Reported 2026-10-16 (Session 23) | 2026-10-16 (Session 23) |
 | BUG-015 | Upstream provider 5xx answered as a generic 500, and a proxy/gateway 5xx was blamed on the user's message (text lost) | Medium | Fixed | Follow-up on BUG-014 (2026-10-16, Session 24) | 2026-10-16 (Session 24) |
 | BUG-016 | CI's PostgreSQL service was never used (real-SQL integration tests skipped on every PR) and no lint gate existed | Medium | Fixed | Follow-up on BUG-006 (2026-10-16, Session 24) | 2026-10-16 (Session 24) |
+| BUG-017 | The MessageBubble image path bypassed the markdown image allowlist (any scheme rendered as `<img>`/download) | Low | Fixed | Audit 4 (2026-10-16) | 2026-10-16 (Session 25) |
 
 ## Open
 
@@ -40,6 +41,17 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 _(none)_
 
 ## Fixed
+
+### BUG-017 — The message image path bypassed the markdown image allowlist
+- **Severity / Status:** Low / **Fixed** (2026-10-16, Session 25; Audit 4 finding A3).
+- **Where:** `artifacts/lumina/src/components/message-bubble.tsx` (`extractImageSrc`, used by the bubble, the lightbox item list and the download anchor via `chat-conversation.tsx:472`), `artifacts/lumina/src/lib/markdown.tsx` (new shared `isAllowedImageSrc()`).
+- **Symptom / root cause:** Audit 3 F-12 restricted the *generic* renderer to `data:image/*` and the same-origin image route, but the dedicated MessageBubble path accepted **any** src in a `![x](…)` line: a crafted message rendered an external `<img>` (tracking pixel / mixed content) together with the lightbox and Download controls, and `javascript:`, `data:text/html…` and lookalike paths (`/api/openai/images/12.png/../../evil`) passed straight through. Not an XSS in practice (React blocks `javascript:` in `src` and no `dangerouslySetInnerHTML` exists anywhere), but two independent image paths with one rule missing.
+- **Fix applied:** one allowlist, `isAllowedImageSrc(src)` in `lib/markdown.tsx` — allowed are `data:image/*` (the in-session optimistic Artist URI) and `/api/openai/images/<id>.<ext>` (owner-scoped) — now used by **both** render paths; everything else falls back to the plain-text line. Every consumer routes through `extractImageSrc`, so the bubble, the lightbox list and the download link all inherit it.
+- **Remote-image decision (tradeoff):** remote http(s) images are **not loaded and not proxied — plain text only**. Loading them would leak the reader's IP/referer to a third-party host (tracking pixels, mixed content); an image proxy would add SSRF surface and a hosting dependency for little gain. The visible cost: model output that cites an image URL shows the URL as readable text instead of an inline image. `data:` remains allowed *only* in the `data:image/` form, because freshly generated Artist images are displayed from that URI until the persisted `/api/…` reference arrives (rejecting it outright would blank the optimistic image — rejected schemes are `javascript:`, non-image `data:` payloads, and everything remote).
+- **Tests added:** `artifacts/lumina/test/message-bubble.spec.tsx` +4 — remote http/https srcs rejected, `javascript:` (incl. mixed case) and `data:text/html` rejected, lookalike path rejected, and a component case asserting **no `<img>` / no lightbox / no download control** with the text still visible. Failing-first verified: **4 failed / 15 passed** against the old code; now green alongside the unchanged `markdown.spec.tsx` F-12 cases.
+- **Verified by:** whole-workspace `pnpm test` exit 0 — **320 passed + 4 env-gated skipped** (6 api-client-react + 164 api-server + 150 lumina), up from 316 + 4; `pnpm typecheck` exit 0; `pnpm lint` exit 0 (0 errors, 4 pre-existing warnings).
+- **Limitations:** React's `src` handling already blocked script execution, so this closes an unexploited hardening gap rather than a live XSS; the lightbox still renders whatever src its message carries (now allowlisted upstream).
+- **Related:** Audit 3 F-12 (the renderer half of the allowlist), Audit 4 A3; BUG-018 covers the sibling link-scheme gap (A4).
 
 ### BUG-015 — An upstream 5xx was answered as a generic 500, and a proxy/gateway 5xx threw away the user's message
 - **Severity / Status:** Medium / **Fixed** (2026-10-16, Session 24).
