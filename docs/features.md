@@ -6,9 +6,10 @@ Living document: update statuses and add entries whenever features change. Never
 
 | Feature | Status | Files involved | Last updated |
 |---|---|---|---|
-| Chat with streaming responses | Done | artifacts/lumina/src/pages/chat-conversation.tsx, artifacts/lumina/src/lib/stream-message.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-02 |
-| Five AI modes | Done | artifacts/lumina/src/lib/modes.ts, artifacts/lumina/src/components/mode-selector.tsx, artifacts/api-server/src/routes/openai/index.ts | 2026-10-03 |
-| Source-backed Search | Done | artifacts/api-server/src/routes/openai/index.ts (`searchPublicSources`), artifacts/lumina/src/pages/chat-conversation.tsx | 2026-10-02 |
+| Chat with streaming responses | Done | artifacts/lumina/src/pages/chat-conversation.tsx, artifacts/lumina/src/lib/stream-message.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-16 (BUG-014: mapped provider errors, failed-message state with Retry, retry dedupe) |
+| Five AI modes | Done | artifacts/lumina/src/lib/modes.ts, artifacts/lumina/src/components/mode-selector.tsx, artifacts/api-server/src/routes/openai/index.ts | 2026-10-16 (BUG-014: every mode's provider failures share one mapping) |
+| Source-backed Search | Done | artifacts/api-server/src/routes/openai/index.ts (`searchPublicSources`), artifacts/lumina/src/pages/chat-conversation.tsx | 2026-10-16 (BUG-014: failure path uses the shared mapping) |
+| Provider configuration + failure mapping | Done | artifacts/api-server/src/lib/{provider-config,provider-errors}.ts, artifacts/api-server/src/index.ts, artifacts/api-server/src/routes/openai/index.ts, artifacts/lumina/src/lib/stream-message.ts | 2026-10-16 (BUG-014) |
 | Image generation API (backend) | Done | artifacts/api-server/src/routes/openai/index.ts, lib/integrations-openai-ai-server/src/image/ | 2026-10-05 (bytes stored in message_images) |
 | Image generation UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (Artist mode), artifacts/lumina/src/components/message-bubble.tsx, artifacts/lumina/src/components/image-lightbox.tsx, artifacts/lumina/src/lib/markdown.tsx | 2026-10-05 (server-hosted image URLs) |
 | Voice / audio integrations | Planned | lib/integrations-openai-ai-server/src/audio/, lib/integrations-openai-ai-react/src/audio/ | 2026-10-02 |
@@ -29,9 +30,9 @@ Living document: update statuses and add entries whenever features change. Never
 | Dev launcher + API proxy | Done | scripts/dev-local.mjs, artifacts/lumina/vite.config.ts | 2026-10-16 (BUG-013: labels the exited service; proxy answers a JSON 503 when the API is down) |
 | Shared API client + fetch layer | Done | lib/api-client-react/src/custom-fetch.ts, lib/api-client-react/src/generated/ | 2026-10-02 |
 | OpenAI-compatible integration library | Done | lib/integrations-openai-ai-server/src/client.ts | 2026-10-02 |
-| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,rate-limit-keying,image,message-images,conversation-pagination,message-content-limit,sse-abort,stats-and-auth-me,session-cookie,health,database-health,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-16 (BUG-013: health/readiness + error-contract specs) |
-| Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-04 |
-| Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/{lightbox-harness.tsx,index.html,stub-provider.mjs,cdp.mjs,chrome.mjs} | 2026-10-04 |
+| Smoke tests | Done | artifacts/api-server/test/{app,auth,bug-002,rate-limit,rate-limit-keying,image,message-images,conversation-pagination,message-content-limit,sse-abort,stats-and-auth-me,session-cookie,health,database-health,provider-config,provider-errors,bug-014,integration.pagination}.spec.ts, lib/api-client-react/test/custom-fetch.spec.ts | 2026-10-16 (BUG-014: startup config + provider error mapping specs) |
+| Frontend component tests | Done | artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/*.spec.tsx | 2026-10-16 (BUG-014: failed-message state, Retry, composer restore) |
+| Browser verification harness | Done | scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/{lightbox-harness.tsx,index.html,stub-provider.mjs,cdp.mjs,chrome.mjs} | 2026-10-16 (BUG-014: provider-failure step) |
 | Automated test suite in CI | Done | .github/workflows/browser-tests.yml now runs `pnpm test` before the browser harnesses (Audit 3 F-01 / BUG-006, 2026-10-05); step command verified locally (exit 0, 123 passed + 2 env-gated skipped at the time) | 2026-10-05 |
 
 ## Feature details
@@ -42,8 +43,8 @@ Multi-turn AI chat. Backend streams model output to the browser as Server-Sent E
 - **How it works:** `POST /api/openai/conversations/:id/messages` persists the user message, loads the last 20 messages as history, prepends a mode-based system prompt, then calls the OpenAI-compatible provider with `stream: true` and writes `data: {...}` SSE frames. If the client disconnects mid-stream (`res` close before the response ended), the provider call is aborted via an AbortController signal and the partial assistant message is not persisted (Audit 3 F-04 / BUG-009, 2026-10-05). The frontend `streamMessage()` in stream-message.ts reads the stream with `res.body.getReader()` and fires `onChunk`/`onDone`/`onError`.
 - **Key files/functions:** `artifacts/api-server/src/routes/openai/index.ts` (POST messages handler); `artifacts/lumina/src/lib/stream-message.ts` (`streamMessage`); `artifacts/lumina/src/pages/chat-conversation.tsx`
 - **Inputs:** conversation id, message content, mode, optional context string (truncated to 24000 chars server-side). **Outputs:** SSE events `{content}` / `{error}` / `{done:true}`; assistant message persisted to DB. **Dependencies:** `@workspace/db`, `@workspace/integrations-openai-ai-server`, model `openai/gpt-oss-120b`, max_tokens 4096.
-- **Known limitations:** provider model is hardcoded; provider failures *after* streaming has begun still arrive as an in-band SSE error frame (pre-stream failures return HTTP 502 as of BUG-002 fix, 2026-10-02).
-- **Dates:** added 2026-07-29, last modified 2026-10-05 (client-disconnect abort, F-04)
+- **Known limitations:** provider model is hardcoded; provider failures *after* streaming has begun still arrive as an in-band SSE error frame (pre-stream failures return the mapped HTTP status as of BUG-002/BUG-014).
+- **Dates:** added 2026-07-29, last modified 2026-10-16 (BUG-014: mapped provider errors, in-place failed message with Retry, retry reuses the unanswered prompt)
 
 ### Five AI modes
 Chat, Search, Write, Artist, Translate — each changes the system prompt.
@@ -52,7 +53,8 @@ Chat, Search, Write, Artist, Translate — each changes the system prompt.
 - **Key files/functions:** `artifacts/lumina/src/lib/modes.ts` (`MODES`, `getModeById`), `artifacts/lumina/src/components/mode-selector.tsx`, `artifacts/api-server/src/routes/openai/index.ts` (`modePrompts`)
 - **Inputs:** mode key. **Outputs:** different assistant persona. **Dependencies:** none beyond chat pipeline.
 - **Known limitations:** the frontend intercepts Artist mode and calls the image API directly (see Image generation UI); the messages route's `artist` system prompt is now only a fallback for direct API callers.
-- **Dates:** added 2026-07-29, last modified 2026-10-03
+- **Provider key per tool:** Chat, Search, Write and Translate need the chat-completions API, Artist needs the images API — all four use the same provider credentials (`OPENAI_API_KEY` + `AI_INTEGRATIONS_OPENAI_BASE_URL`), so there is no per-tool key to be missing while another works. A provider failure on one route is mapped to a safe response for that request only and never affects the others (asserted in `test/bug-014.spec.ts`).
+- **Dates:** added 2026-07-29, last modified 2026-10-16 (BUG-014: per-tool provider needs documented, uniform failure mapping)
 
 ### Source-backed Search
 Live public web sources injected into the model context.
@@ -60,8 +62,8 @@ Live public web sources injected into the model context.
 - **How it works:** `GET /api/openai/search?q=` fetches Wikipedia opensearch API and DuckDuckGo Instant Answer API (max 6 sources), returns title/url/snippet/domain. The frontend (`chat-conversation.tsx`, handleSendMessage search branch) fetches sources when in Search mode and appends them to the message `context`.
 - **Key files/functions:** `searchPublicSources` in artifacts/api-server/src/routes/openai/index.ts; chat-conversation.tsx context assembly
 - **Inputs:** query string (min 2 chars). **Outputs:** `{query, sources[]}`. **Dependencies:** Wikipedia API, DuckDuckGo API (no API key needed).
-- **Known limitations:** public APIs only; returns 502 when both fail; sources are appended as text, not citations UI. Wikipedia and DuckDuckGo are fetched concurrently (Audit 2 F-02); a slow or failing source no longer delays or drops the other's results.
-- **Dates:** added 2026-07-29, last modified 2026-10-05 (concurrent source fetches)
+- **Known limitations:** public APIs only; when *both* sources are unavailable the route answers `200` with an empty `sources` list by design (the turn degrades to the model's own knowledge, and the frontend notes that no public sources were returned) rather than failing the turn — its own failure path uses the shared provider mapping (BUG-014); sources are appended as text, not citations UI. Wikipedia and DuckDuckGo are fetched concurrently (Audit 2 F-02); a slow or failing source no longer delays or drops the other's results.
+- **Dates:** added 2026-07-29, last modified 2026-10-16 (BUG-014: failure path mapped like every other tool)
 
 ### Image generation API (backend)
 Text-to-image endpoint returning base64 image bytes with a sniffed media type (PNG/WebP/JPEG; PNG fallback).
@@ -193,6 +195,13 @@ Single command starts API + Vite with /api proxying.
 - **Key files:** scripts/dev-local.mjs, artifacts/lumina/vite.config.ts
 - **Dates:** added 2026-08-30, last modified 2026-10-02; exit labelling + proxy error response 2026-10-16 (BUG-013)
 
+### Provider configuration + failure mapping
+An unconfigured provider stops startup; every provider failure becomes safe, classified copy.
+- **Status:** Done
+- **How it works:** `lib/provider-config.ts` validates the provider settings before the API listens: an empty value or one of the documented placeholder shapes (`replace…` — including `.env.example`'s `replace-with-your-key`, `your-api-key`, `changeme`, `xxx`, `<your-key>`, `placeholder`) counts as *not configured*, as does a missing/malformed `AI_INTEGRATIONS_OPENAI_BASE_URL`. The process exits 1 with a synchronous stderr line naming the variable, pointing at `.env`/`.env.example`/the README, and never printing the value. Because importing the router constructs the provider SDK (which refuses to build without credentials), `index.ts` validates first and only then `await import("./app")`. `lib/provider-errors.ts` classifies every upstream failure: provider 401/403 → **502** "The AI service is not configured correctly. Please contact the administrator.", 429 → **503** "The AI service is busy or over quota. Please try again later.", timeout/connection failures (and provider 408/504) → **504** "The AI service did not respond. Please try again.", anything else → generic **500**. The provider's real status, code, message and stack are logged with the request id (`provider request failed`), redacted — `lib/safe-error.ts` now also strips configured secret values, `sk-`-shaped keys and the provider's masked echo (`replace-*********-key`). Chat, image generation and the Search failure path all go through the same mapper, so no route can forward provider text.
+- **Key files/functions:** artifacts/api-server/src/lib/provider-config.ts (`readProviderConfig`, `isPlaceholderValue`), artifacts/api-server/src/lib/provider-errors.ts (`mapProviderError`, `logProviderError`, `sendProviderError`), artifacts/api-server/src/lib/safe-error.ts (`redactSecrets`), artifacts/api-server/src/routes/openai/index.ts, artifacts/api-server/src/index.ts
+- **Dates:** added 2026-10-16 (BUG-014)
+
 ### Error handling and diagnosability
 Every failure is logged with its real cause and answered with safe, specific JSON.
 - **Status:** Done
@@ -210,29 +219,30 @@ Typed React Query client generated by orval plus a hardened fetch wrapper.
 ### OpenAI-compatible integration library
 Server-side provider client (chat, image, audio, batch).
 - **Status:** Done
-- **How it works:** reads `AI_INTEGRATIONS_OPENAI_API_KEY`/`OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL`; subpath exports for image/audio/batch.
+- **How it works:** reads `AI_INTEGRATIONS_OPENAI_API_KEY`/`OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL`; subpath exports for image/audio/batch. Its clients still refuse to be constructed without credentials, which is why the API validates the provider settings and only *then* imports the router (BUG-014) — a direct consumer that skips that check gets the provider's own error on the first call, which the API maps to a safe 502.
 - **Key files:** lib/integrations-openai-ai-server/src/client.ts, src/image/, src/audio/, src/batch/
-- **Dates:** added 2026-07-29, last modified 2026-10-02
+- **Dates:** added 2026-07-29, last modified 2026-10-16 (BUG-014: validation lives in the API's startup check)
 
 ### Frontend component tests
 Vitest + React Testing Library coverage for the Lumina UI, wired into the root `pnpm test`.
 - **Status:** Done
 - **How it works:** `artifacts/lumina/vitest.config.ts` is a dedicated config (so tests never import vite.config.ts, which hard-requires PORT/BASE_PATH and the Replit plugins) using the jsdom environment, the `@vitejs/plugin-react` transform, the `@/*` alias, and `test/setup.ts` (jest-dom matchers; matchMedia/ResizeObserver/scrollIntoView/PointerEvent shims; explicit RTL cleanup). Tests live in `test/*.spec.tsx`, kept out of the app tsconfig (same convention as api-client-react). `package.json` gains `test: vitest run`, so the root `pnpm test` picks it up.
 - **Covers:** markdown rendering; ChatInput submit/keyboard/disabled behavior; MessageBubble (plain text, generating state, image + lightbox open, download, conditional re-generate); ImageLightbox (closed state, counter, boundary-disabled arrows, click/keyboard navigation, button + scroll-wheel zoom with ctrl fine step and clamping, double-click fit↔2× toggle, drag-to-pan with clamping, zoom/pan reset when switching images, close); and the auth flows — AuthGate/GuestOnly guards (loading/authenticated/unauthenticated + redirects), AuthProvider (status derivation from /auth/me, 401 vs unexpected error, signOut clearing user + invalidating caches), and the sign-in and sign-up forms (success seeds the auth cache and navigates, API error display, generic fallback, pending/disabled state); the chat header account menu (hidden when signed out, name/email display, sign-out fires once, disabled/"Signing out…" while pending, failure toast + re-enable); the conversation list sidebar (new-chat button, loading skeleton, empty state, sorted list + active highlight, delete invalidation); and the image lightbox keyboard shortcuts (navigate/zoom hints backed by real key handlers, `Esc` to close, and accessible `aria-label`s on every hint `<kbd>` plus the always-visible double-click-toggle hint).
-- **Key files:** artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/{markdown,chat-input,message-bubble,image-lightbox,auth-gate,guest-only,auth-provider,sign-in,sign-up,chat-header,conversation-list}.spec.tsx
-- **Dates:** added 2026-10-03 (Session 11); extended with auth-flow tests 2026-10-03 (Session 14); sign-up, lightbox double-click, chat-header sign-out, conversation-list, and lightbox keyboard-shortcut coverage 2026-10-03 (Session 15 + 16); accessible shortcut labels + double-click hint and zoom reset-on-image-change test 2026-10-04 (Session 17)
+- **Key files:** artifacts/lumina/vitest.config.ts, artifacts/lumina/test/setup.ts, artifacts/lumina/test/{markdown,chat-input,message-bubble,image-lightbox,auth-gate,guest-only,auth-provider,sign-in,sign-up,chat-header,conversation-list,chat-send-failure}.spec.tsx
+- **Dates:** added 2026-10-03 (Session 11); extended with auth-flow tests 2026-10-03 (Session 14); sign-up, lightbox double-click, chat-header sign-out, conversation-list, and lightbox keyboard-shortcut coverage 2026-10-03 (Session 15 + 16); accessible shortcut labels + double-click hint and zoom reset-on-image-change test 2026-10-04 (Session 17); BUG-014 failed-send coverage 2026-10-16 (Session 23: `chat-send-failure.spec.tsx` renders the real page and asserts the failed state, the mapped toast copy, Retry resending, no provider text in the DOM, and the typed text coming back when the API was never reached; ChatInput restore/clear and MessageBubble failed-state cases added to the existing specs)
 
 ### Browser verification harness
 Two real-browser checks driven over the Chrome DevTools Protocol with genuine input events.
 - **Status:** Done
 - **How it works:** `pnpm verify:lightbox` bundles `lightbox-harness.tsx` (which mounts the real `ImageLightbox`) with esbuild, serves it on an ephemeral port and drives headless Chrome (ephemeral DevTools port). `pnpm verify:flow` stands up a throwaway stack — ephemeral PostgreSQL, the real API server + Vite via `scripts/dev-local.mjs`, and the stub image provider — and drives Chrome through the actual app. Both share `cdp.mjs`/`chrome.mjs`, print a JSON report and exit non-zero on any regression. `verify:flow` skips (exit 0) when PostgreSQL/Chrome are missing unless `REQUIRE=1`. Requires Node 22+ (global `WebSocket`).
-- **Covers:** (lightbox) wheel zoom incl. Ctrl fine step, double-click fit↔2× toggle, keyboard `0`/`←`/`→`/`Esc`, drag-to-pan with clamping, gallery navigation (buttons + arrow keys, counter, boundary-disabled arrows, distinct images, zoom/pan reset on navigate) and touch behaviour (`touch-action` gating, touch panning + clamping, real touch pointer events); (flow) sign-up → Artist conversation → image generation → lightbox open/zoom/Escape, asserting HTTP 201/201/200 and no page exceptions.
+- **Covers:** (lightbox) wheel zoom incl. Ctrl fine step, double-click fit↔2× toggle, keyboard `0`/`←`/`→`/`Esc`, drag-to-pan with clamping, gallery navigation (buttons + arrow keys, counter, boundary-disabled arrows, distinct images, zoom/pan reset on navigate) and touch behaviour (`touch-action` gating, touch panning + clamping, real touch pointer events); (flow) sign-up → Artist conversation → image generation → lightbox open/zoom/Escape, asserting HTTP 201/201/200 and no page exceptions; then (BUG-014) a Chat conversation where the stub provider rejects the key with the real `401 Incorrect API key provided: …` message — asserting the request is mapped to **502**, the toast shows the mapped copy, the failed message is marked with a Retry control that resends it (a second request), and that no provider text, URL or key fragment appears anywhere in the page.
+- **Harness note:** the image step now clicks through a new `clickInView` helper — it waits for a non-zero box (an `<img>` has no height until its bytes decode), scrolls the element into view and verifies the click point is inside the viewport, which removed a reproducible flake where the click landed on empty space. The lightbox image assertion accepts both the optimistic `data:image/png;base64,…` URI and the persisted `/api/openai/images/<id>.png` reference (Audit 3 F-03), which it had not been updated for. The stub provider also answers `/v1/chat/completions` (`STUB_CHAT_STATUS`, default 401; 200 streams a minimal SSE completion).
 - **Key files:** scripts/browser/verify-lightbox.mjs, scripts/browser/verify-flow.mjs, scripts/browser/lightbox-harness.tsx, scripts/browser/index.html, scripts/browser/stub-provider.mjs, scripts/browser/{cdp,chrome}.mjs, scripts/browser/README.md
-- **Dates:** added 2026-10-04 (Session 17)
+- **Dates:** added 2026-10-04 (Session 17); provider-failure flow + click/PNG fixes 2026-10-16 (Session 23, BUG-014)
 
 ### Smoke tests
 Vitest suites for the API and the fetch layer, plus env-gated DB integration tests.
 - **Status:** Done
 - **How it works:** api-server boots the real Express app on an ephemeral port with db mocked (no Postgres needed); asserts healthz, 413 body limit, CORS blocking, 400 validation, helmet headers, auth flows, auth rate limiting (429 after the limit; successful logins not counted), image persistence/ownership/502 paths, and SSE failure paths. integration.pagination.spec.ts additionally runs against a real Postgres when `E2E_DATABASE_URL` is set (skipped otherwise) and asserts cursor pagination order/monotonicity/no-repeats plus per-user isolation. api-client-react unit-tests `customFetch` behavior.
 - **Key files:** artifacts/api-server/test/app.spec.ts, auth.spec.ts, bug-002.spec.ts, rate-limit.spec.ts, image.spec.ts, integration.pagination.spec.ts, artifacts/api-server/test/helpers/server.ts, artifacts/api-server/vitest.config.ts, lib/api-client-react/test/custom-fetch.spec.ts, lib/api-client-react/vitest.config.ts
-- **Dates:** added 2026-10-02, last modified 2026-10-03 (Session 6: auth rate-limit suite)
+- **Dates:** added 2026-10-02, last modified 2026-10-16 (Session 23, BUG-014: startup provider-config and provider-error mapping suites)

@@ -9,7 +9,7 @@ Requirements:
 - Node.js 20+ (CI validates against Node 22)
 - pnpm 9+
 - PostgreSQL 14+
-- An OpenAI-compatible API key
+- An OpenAI-compatible API key (used by every AI feature — see below)
 
 If `createdb` prints `command not found` on macOS with zsh, install PostgreSQL and add its command-line tools:
 
@@ -60,7 +60,11 @@ pnpm install
 cp .env.example .env
 ```
 
-Set `DATABASE_URL`, `OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`, and `SESSION_SECRET` in `.env` (generate a session secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`). Then initialize the schema:
+Set `DATABASE_URL`, `OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`, and `SESSION_SECRET` in `.env` (generate a session secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
+
+**One provider key covers every AI feature.** Chat, Search, Write and Translate call the provider's chat-completions API; Artist calls its images API. Get an OpenAI key from <https://platform.openai.com/account/api-keys> (any OpenAI-compatible provider works — set its key page's key and its base URL). The server reads `.env` **once at startup**, so restart `pnpm dev` after editing it. An empty key or the placeholder from `.env.example` (`replace-with-your-key`) is treated as *not configured* and the API exits before listening, naming the variable — it will not start a server that fails on your first message.
+
+Then initialize the schema:
 
 ```bash
 pnpm db:push
@@ -153,7 +157,20 @@ The schema was never applied. `pnpm db:push` reads the root `.env`, applies ever
 
 **The API exits at startup**
 
-That is intentional (see above): the printed line names the reason (`unreachable` or `schema-missing`) and the underlying driver error. Fix it and start again — no request has to fail first.
+That is intentional (see above): the printed line names the reason — a missing or placeholder provider key (`OPENAI_API_KEY is not set` / `OPENAI_API_KEY in .env still holds the placeholder value from .env.example`), a provider base URL that is missing or malformed, `unreachable`, or `schema-missing` — plus the underlying driver error. The provider checks run before the database ones. Fix it and start again — no request has to fail first.
+
+**A reply fails with a message about "the AI service"**
+
+The API never forwards the provider's own error text to the browser (it can contain part of your key, and it is not actionable for whoever is using the app). It is classified, answered with fixed copy, and the real provider status, code and message are logged server-side — redacted — with the request id, so `LOG_LEVEL=debug` plus the API terminal is where to look:
+
+| Message shown | Status | Provider said | What to do |
+|---|---|---|---|
+| The AI service is not configured correctly. Please contact the administrator. | 502 | 401 / 403 | The key is wrong, revoked, or for another provider's base URL. Set a real `OPENAI_API_KEY` and a matching `AI_INTEGRATIONS_OPENAI_BASE_URL` in `.env`, then restart. |
+| The AI service is busy or over quota. Please try again later. | 503 | 429 | Rate limit or exhausted quota on the provider account. Wait, or raise the limit. |
+| The AI service did not respond. Please try again. | 504 | timeout / connection failure | The provider is unreachable or too slow (wrong `AI_INTEGRATIONS_OPENAI_BASE_URL`, no network, provider outage). |
+| Internal server error | 500 | anything else | An unclassified provider failure or a bug: the API log line "provider request failed" carries the real cause with the request id. |
+
+In the chat, a message that failed this way stays in the transcript with **Message failed to send** and a **Retry** button; the toast shows the mapped copy above. When the request never reached the API at all (API process down, browser offline), the text you typed is put back in the composer instead — nothing was saved anywhere, so nothing is lost.
 
 ## Validate and build
 
