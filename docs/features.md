@@ -8,7 +8,7 @@ Living document: update statuses and add entries whenever features change. Never
 |---|---|---|---|
 | Chat with streaming responses | Done | artifacts/lumina/src/pages/chat-conversation.tsx, artifacts/lumina/src/lib/stream-message.ts, artifacts/api-server/src/routes/openai/index.ts | 2026-10-16 (BUG-014: mapped provider errors, failed-message state with Retry, retry dedupe) |
 | Five AI modes | Done | artifacts/lumina/src/lib/modes.ts, artifacts/lumina/src/components/mode-selector.tsx, artifacts/api-server/src/routes/openai/index.ts | 2026-10-16 (BUG-014: every mode's provider failures share one mapping) |
-| Source-backed Search | Done | artifacts/api-server/src/routes/openai/index.ts (`searchPublicSources`), artifacts/lumina/src/pages/chat-conversation.tsx | 2026-10-16 (BUG-014: failure path uses the shared mapping) |
+| Source-backed Search | Done | artifacts/api-server/src/routes/openai/index.ts (`searchPublicSources`), artifacts/lumina/src/pages/chat-conversation.tsx, artifacts/lumina/src/lib/urls.ts | 2026-10-16 (BUG-018: source cards link http(s) URLs only, `rel="noopener noreferrer"`) |
 | Provider configuration + failure mapping | Done | artifacts/api-server/src/lib/{provider-config,provider-errors}.ts, artifacts/api-server/src/index.ts, artifacts/api-server/src/routes/openai/index.ts, artifacts/lumina/src/lib/stream-message.ts | 2026-10-16 (BUG-015: upstream 5xx → 502; a proxy/gateway 5xx is treated as unsent so the composer keeps the text) |
 | Image generation API (backend) | Done | artifacts/api-server/src/routes/openai/index.ts, lib/integrations-openai-ai-server/src/image/ | 2026-10-05 (bytes stored in message_images) |
 | Image generation UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (Artist mode), artifacts/lumina/src/components/message-bubble.tsx, artifacts/lumina/src/components/image-lightbox.tsx, artifacts/lumina/src/lib/markdown.tsx | 2026-10-16 (BUG-017: one image-src allowlist shared by the bubble, lightbox and markdown renderer) |
@@ -19,7 +19,7 @@ Living document: update statuses and add entries whenever features change. Never
 | Conversation exports (Markdown/JSON) | Done | artifacts/lumina/src/pages/chat-conversation.tsx (`exportConversation`) | 2026-10-02 |
 | Usage stats API | Done | artifacts/api-server/src/routes/openai/index.ts (`GET /openai/stats`) | 2026-10-02 |
 | Landing page + SEO | Done | artifacts/lumina/src/pages/landing.tsx, artifacts/lumina/src/lib/seo.ts | 2026-10-02 |
-| Comparison hub (SEO) | Done | artifacts/lumina/src/pages/compare-hub.tsx, artifacts/lumina/src/pages/comparison.tsx, artifacts/lumina/src/lib/comparisons.ts, artifacts/lumina/src/lib/seo.ts | 2026-10-02 |
+| Comparison hub (SEO) | Done | artifacts/lumina/src/pages/compare-hub.tsx, artifacts/lumina/src/pages/comparison.tsx, artifacts/lumina/src/lib/comparisons.ts, artifacts/lumina/src/lib/seo.ts, artifacts/lumina/src/lib/urls.ts | 2026-10-16 (BUG-018: external anchors http(s)-guarded with `rel="noopener noreferrer"`) |
 | Pricing page | Done | artifacts/lumina/src/pages/pricing.tsx | 2026-10-02 |
 | Sign-in / Sign-up pages | Done | artifacts/lumina/src/pages/sign-in.tsx, artifacts/lumina/src/pages/sign-up.tsx, artifacts/lumina/src/lib/auth-provider.tsx, artifacts/lumina/src/components/auth-gate.tsx, artifacts/lumina/src/components/guest-only.tsx | 2026-10-02 |
 | Sign-out UI | Done | artifacts/lumina/src/pages/chat-conversation.tsx (account menu), artifacts/lumina/src/lib/auth-provider.tsx (`signOut`) | 2026-10-03 |
@@ -60,7 +60,7 @@ Chat, Search, Write, Artist, Translate — each changes the system prompt.
 ### Source-backed Search
 Live public web sources injected into the model context.
 - **Status:** Done
-- **How it works:** `GET /api/openai/search?q=` fetches Wikipedia opensearch API and DuckDuckGo Instant Answer API (max 6 sources), returns title/url/snippet/domain. The frontend (`chat-conversation.tsx`, handleSendMessage search branch) fetches sources when in Search mode and appends them to the message `context`.
+- **How it works:** `GET /api/openai/search?q=` fetches Wikipedia opensearch API and DuckDuckGo Instant Answer API (max 6 sources), returns title/url/snippet/domain. The frontend (`chat-conversation.tsx`, handleSendMessage search branch) fetches sources when in Search mode and appends them to the message `context`; the source cards are external links **only** for `http(s)` URLs (shared `isHttpUrl` guard) with `target="_blank" rel="noopener noreferrer"`, and a rejected scheme renders the same card as plain text (BUG-018).
 - **Key files/functions:** `searchPublicSources` in artifacts/api-server/src/routes/openai/index.ts; chat-conversation.tsx context assembly
 - **Inputs:** query string (min 2 chars). **Outputs:** `{query, sources[]}`. **Dependencies:** Wikipedia API, DuckDuckGo API (no API key needed).
 - **Known limitations:** public APIs only; when *both* sources are unavailable the route answers `200` with an empty `sources` list by design (the turn degrades to the model's own knowledge, and the frontend notes that no public sources were returned) rather than failing the turn — its own failure path uses the shared provider mapping (BUG-014); sources are appended as text, not citations UI. Wikipedia and DuckDuckGo are fetched concurrently (Audit 2 F-02); a slow or failing source no longer delays or drops the other's results.

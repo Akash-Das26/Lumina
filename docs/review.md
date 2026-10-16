@@ -4,6 +4,17 @@ Session-by-session log of work. New entries go at the TOP.
 
 ---
 
+### Session 26 - 2026-10-16 (Audit 4 A4 / BUG-018: http(s)-only external links with `noopener noreferrer`)
+- **Goal:** second Audit 4 priority — search-source links were built from upstream data with no scheme check and `rel="noreferrer"` only.
+- **Reproduced first:** two new spec files against the untouched code → **4 failed / 1 passed** (search-source-links.spec: the `javascript:` source was a live `<a href>` and the safe link lacked `noopener`; comparison.spec: both vendor/reference anchors lacked `noopener`).
+- **Root cause:** `href={source.url}` straight from Wikipedia/DuckDuckGo, and the comparison anchors used `rel="noreferrer"` alone — same pattern, two pages.
+- **Fix (smallest change):** new `lib/urls.ts` `isHttpUrl()` (absolute http/https only) guarding **every** external href; rejected sources keep their card as unlinked text (title/snippet/domain stay readable, ExternalLink icon dropped); all external anchors now `target="_blank" rel="noopener noreferrer"`. Internal wouter links untouched; image/download hrefs already covered by BUG-017.
+- **Tests run:** the 5 new tests pass; whole-workspace `pnpm test` exit 0 — **325 passed + 4 skipped** (6 + 164 + 155, up from 320); `pnpm typecheck` exit 0; `pnpm lint` exit 0 (0 errors, 4 pre-existing warnings).
+- **Docs:** bug.md (BUG-018 → Fixed), audit.md (A4 → Fixed), features.md (Source-backed Search + Comparison hub rows/detail), this entry.
+- **Commit:** `Guard external link schemes and add noopener (BUG-018, Audit 4 A4)`.
+
+---
+
 ### Session 25 - 2026-10-16 (Audit 4 A3 / BUG-017: one image-src allowlist for both render paths)
 - **Goal:** work through Audit 4 findings in priority order on a new branch `fix/audit4-findings` cut from `fix/ci-lint-5xx` (main is still unmerged — chosen target, reported to the user). Baseline before touching anything: `pnpm test` exit 0 (316 passed + 4 env-gated skipped), `pnpm typecheck` exit 0, `pnpm lint` exit 0 (0 errors, 4 warnings).
 - **Reproduced first:** added the A3 cases to `message-bubble.spec.tsx` and ran them against the untouched code → **4 failed / 15 passed** (remote http/https, `javascript:` + mixed case, `data:text/html`, lookalike path, and the component case showing an `<img>` + lightbox/download controls for a remote URL).

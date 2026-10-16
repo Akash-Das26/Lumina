@@ -23,6 +23,7 @@ Summary table + Open / In Progress / Fixed sections. Never delete entries; move 
 | BUG-015 | Upstream provider 5xx answered as a generic 500, and a proxy/gateway 5xx was blamed on the user's message (text lost) | Medium | Fixed | Follow-up on BUG-014 (2026-10-16, Session 24) | 2026-10-16 (Session 24) |
 | BUG-016 | CI's PostgreSQL service was never used (real-SQL integration tests skipped on every PR) and no lint gate existed | Medium | Fixed | Follow-up on BUG-006 (2026-10-16, Session 24) | 2026-10-16 (Session 24) |
 | BUG-017 | The MessageBubble image path bypassed the markdown image allowlist (any scheme rendered as `<img>`/download) | Low | Fixed | Audit 4 (2026-10-16) | 2026-10-16 (Session 25) |
+| BUG-018 | External links had no scheme check (`javascript:`/`data:` reachable from upstream data) and lacked `rel="noopener noreferrer"` | Low | Fixed | Audit 4 (2026-10-16) | 2026-10-16 (Session 26) |
 
 ## Open
 
@@ -52,6 +53,16 @@ _(none)_
 - **Verified by:** whole-workspace `pnpm test` exit 0 — **320 passed + 4 env-gated skipped** (6 api-client-react + 164 api-server + 150 lumina), up from 316 + 4; `pnpm typecheck` exit 0; `pnpm lint` exit 0 (0 errors, 4 pre-existing warnings).
 - **Limitations:** React's `src` handling already blocked script execution, so this closes an unexploited hardening gap rather than a live XSS; the lightbox still renders whatever src its message carries (now allowlisted upstream).
 - **Related:** Audit 3 F-12 (the renderer half of the allowlist), Audit 4 A3; BUG-018 covers the sibling link-scheme gap (A4).
+
+### BUG-018 — External links accepted any scheme and carried no `noopener`
+- **Severity / Status:** Low / **Fixed** (2026-10-16, Session 26; Audit 4 finding A4).
+- **Where:** `artifacts/lumina/src/pages/chat-conversation.tsx` (search-source cards), `artifacts/lumina/src/pages/comparison.tsx` (vendor-site and reference anchors), new shared guard `artifacts/lumina/src/lib/urls.ts` (`isHttpUrl`).
+- **Symptom / root cause:** the search-source cards set `href={source.url}` straight from Wikipedia/DuckDuckGo data with `rel="noreferrer"` only — a poisoned upstream returning `javascript:…` or `data:…` would become a click-to-execute link, and modern `noreferrer` implies `noopener` but never stated it. The comparison page's two external anchors had the same missing `noopener` (their data is static `https://`, so no scheme risk there).
+- **Fix applied:** one shared `isHttpUrl()` (absolute `http:`/`https:` only; relative, `javascript:`, `data:`, malformed input rejected) guards every external href; rejected sources render the same card **unlinked** so the title/snippet/domain stay readable; every external anchor now carries `target="_blank" rel="noopener noreferrer"`. Internal links (wouter `Link`, conversation list) are untouched; the image/download hrefs were already covered by BUG-017.
+- **Tests added:** new `artifacts/lumina/test/search-source-links.spec.tsx` (3: http source linked with both rel tokens; `javascript:`/`data:` sources **not** linked but visible, with no `a[href^="javascript"]`/`a[href^="data:"]` anywhere; the search fetch happens once) and new `test/comparison.spec.tsx` (2: vendor-site and reference anchors carry `noopener` + `noreferrer` and an `https://` href). Failing-first verified: **4 failed / 1 passed** across the two files against the old code (2 missing-noopener + the live `javascript:` anchor).
+- **Verified by:** whole-workspace `pnpm test` exit 0 — **325 passed + 4 env-gated skipped** (6 + 164 + 155), up from 320; `pnpm typecheck` exit 0; `pnpm lint` exit 0 (0 errors, 4 pre-existing warnings).
+- **Limitations:** the guard runs at render time — a source's stored text is never sanitized beyond this (the app does not persist sources); `rel` hardening changes nothing for the already-safe `https://` links.
+- **Related:** Audit 4 A4; sibling of BUG-017 (image half); Audit 3 F-02 (the upstream fetch itself).
 
 ### BUG-015 — An upstream 5xx was answered as a generic 500, and a proxy/gateway 5xx threw away the user's message
 - **Severity / Status:** Medium / **Fixed** (2026-10-16, Session 24).

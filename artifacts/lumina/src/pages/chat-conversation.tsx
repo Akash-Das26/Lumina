@@ -36,6 +36,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useSeo } from '@/lib/seo';
+import { isHttpUrl } from '@/lib/urls';
 
 interface TempMessage {
   id?: number;
@@ -661,16 +662,41 @@ export default function ChatConversation() {
                 Sources used for this answer
               </div>
               <div className="grid gap-2 sm:grid-cols-2">
-                {sources.map((source) => (
-                  <a key={source.url} href={source.url} target="_blank" rel="noreferrer" className="group rounded-xl border border-border bg-card p-3 transition hover:border-primary/40">
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold line-clamp-1">{source.title}</span>
-                      <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                {sources.map((source) => {
+                  // BUG-018 / Audit 4 A4: sources are upstream data — only
+                  // http(s) URLs may become links, so a poisoned upstream
+                  // cannot hand the page a javascript:/data: URL. External
+                  // links open in a new tab with noopener+noreferrer, and a
+                  // rejected source still shows its card as plain text.
+                  const href = isHttpUrl(source.url) ? source.url : undefined;
+                  const card = (
+                    <>
+                      <div className="mb-1 flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold line-clamp-1">{source.title}</span>
+                        {href && (
+                          <ExternalLink className="h-3 w-3 shrink-0 text-muted-foreground group-hover:text-primary" />
+                        )}
+                      </div>
+                      <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{source.snippet}</p>
+                      <span className="mt-2 block text-[10px] text-primary">{source.domain}</span>
+                    </>
+                  );
+                  return href ? (
+                    <a
+                      key={source.url}
+                      href={href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="group rounded-xl border border-border bg-card p-3 transition hover:border-primary/40"
+                    >
+                      {card}
+                    </a>
+                  ) : (
+                    <div key={source.url} className="group rounded-xl border border-border bg-card p-3">
+                      {card}
                     </div>
-                    <p className="line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">{source.snippet}</p>
-                    <span className="mt-2 block text-[10px] text-primary">{source.domain}</span>
-                  </a>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
