@@ -94,11 +94,12 @@ for (const [child, name] of [
   child.on('exit', (code) => {
     if (!shuttingDown && code !== 0) {
       console.error(`${name} exited with code ${code ?? 'unknown'}.`);
-      // The API verifies the database before it listens, so an early exit here
-      // is usually a setup problem rather than a crash (BUG-013).
+      // The API verifies its provider settings and the database before it
+      // listens, so an early exit here is a setup problem rather than a crash
+      // (BUG-013, BUG-014).
       if (child === api) {
         console.error(
-          'The API line above names the reason. For a database problem, fix DATABASE_URL in .env and run `pnpm db:push` — see README → Troubleshooting local setup.',
+          'The API line above names the reason: fix the provider key/base URL or DATABASE_URL in .env (it is read once at startup), and run `pnpm db:push` if the schema is missing — see README → Troubleshooting local setup.',
         );
       }
       shutdown();

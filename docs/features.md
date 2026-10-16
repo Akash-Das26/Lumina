@@ -191,9 +191,9 @@ CORS allowlist, helmet, 1MB body limit, per-route rate limits.
 ### Dev launcher + API proxy
 Single command starts API + Vite with /api proxying.
 - **Status:** Done
-- **How it works:** scripts/dev-local.mjs spawns API (API_PORT, default 8080) and Vite (WEB_PORT, default 5173), loads .env, proxies /api/*, shuts both down together. It names which service exited and, when the API does, points at the README troubleshooting section. The Vite dev proxy answers a JSON `503 {"error":"The API server is not reachable."}` when the API process is down, so the UI can say "can't reach the server" instead of reporting a server-side failure.
+- **How it works:** scripts/dev-local.mjs spawns API (API_PORT, default 8080) and Vite (WEB_PORT, default 5173), loads .env, proxies /api/*, shuts both down together. It names which service exited and, when the API does, points at the README troubleshooting section — naming the provider key/base URL as well as `DATABASE_URL`, since the provider check runs first (BUG-014). The Vite dev proxy answers a JSON `503 {"error":"The API server is not reachable."}` when the API process is down, so the UI can say "can't reach the server" instead of reporting a server-side failure.
 - **Key files:** scripts/dev-local.mjs, artifacts/lumina/vite.config.ts
-- **Dates:** added 2026-08-30, last modified 2026-10-02; exit labelling + proxy error response 2026-10-16 (BUG-013)
+- **Dates:** added 2026-08-30, last modified 2026-10-02; exit labelling + proxy error response 2026-10-16 (BUG-013); exit hint covers provider configuration 2026-10-16 (BUG-014)
 
 ### Provider configuration + failure mapping
 An unconfigured provider stops startup; every provider failure becomes safe, classified copy.
