@@ -162,6 +162,26 @@ describe("chat: provider failures are mapped, never forwarded", () => {
     });
   });
 
+  it("answers a provider 5xx as 502 'temporarily unavailable'", async () => {
+    const errorLog = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
+    openaiCreateMock.mockRejectedValue(
+      apiError(503, "upstream is temporarily overloaded: pool exhausted", "upstream_error"),
+    );
+
+    const res = await postMessage();
+
+    expect(res.status).toBe(502);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "The AI service is temporarily unavailable. Please try again.",
+    });
+    // Nothing from the provider reaches the client; the log keeps the truth.
+    expect(res.body).not.toContain("overloaded");
+    const [record] = errorLog.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(record).toMatchObject({ kind: "upstream", providerStatus: 503 });
+    expect(String(record.providerMessage)).toContain("temporarily overloaded");
+    errorLog.mockRestore();
+  });
+
   it("answers an unclassified provider failure as a generic 500", async () => {
     openaiCreateMock.mockRejectedValue(new Error("provider exploded: column images.bytes"));
 
