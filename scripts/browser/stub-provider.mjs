@@ -1,7 +1,12 @@
-// Minimal OpenAI-compatible image provider for the browser harnesses.
+// Minimal OpenAI-compatible provider for the browser harnesses.
 //
 // Serves POST {PORT}/v1/images/generations with a real (valid) PNG so the app
-// can decode and render it. Used by scripts/browser/verify-flow.mjs.
+// can decode and render it, and POST {PORT}/v1/chat/completions with a
+// configurable status — by default the `401 Incorrect API key provided: …`
+// answer that BUG-014 is about, so a harness can prove the app never shows that
+// text to the user. Used by scripts/browser/verify-flow.mjs.
+//
+// Env: PORT (default 8099), STUB_CHAT_STATUS (default 401; 200 streams SSE).
 import http from 'node:http';
 import zlib from 'node:zlib';
 
@@ -56,6 +61,38 @@ http
         }
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ created: Math.floor(Date.now() / 1000), data: [{ b64_json: PNG_B64, revised_prompt: `stub(${prompt})` }] }));
+      } else if (url.includes('/chat/completions')) {
+        const status = Number(process.env.STUB_CHAT_STATUS || 401);
+        if (status !== 200) {
+          // Shape and wording copied from the real provider: the key fragment
+          // included, so the harness can assert none of it reaches the UI.
+          res.writeHead(status, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  'Incorrect API key provided: replace-*********-key. You can find your API key at https://platform.openai.com/account/api-keys',
+                type: 'invalid_request_error',
+                code: 'invalid_api_key',
+                param: null,
+              },
+            }),
+          );
+          return;
+        }
+        const chunk = (delta, finishReason = null) =>
+          `data: ${JSON.stringify({
+            id: 'chatcmpl-stub',
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: 'stub-model',
+            choices: [{ index: 0, delta, finish_reason: finishReason }],
+          })}\n\n`;
+        res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+        res.write(chunk({ role: 'assistant', content: 'stub answer' }));
+        res.write(chunk({}, 'stop'));
+        res.write('data: [DONE]\n\n');
+        res.end();
       } else {
         res.writeHead(404, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ error: { message: 'stub provider: no such endpoint' } }));

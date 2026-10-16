@@ -4,7 +4,15 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
-  onSend: (message: string, attachment?: { name: string; text: string }) => void;
+  /**
+   * Sends a message. May resolve with `true` to say the send never reached the
+   * API — in that case nothing was persisted and the text is restored here
+   * instead of being thrown away (BUG-014).
+   */
+  onSend: (
+    message: string,
+    attachment?: { name: string; text: string },
+  ) => void | boolean | Promise<void | boolean>;
   disabled?: boolean;
   placeholder?: string;
 }
@@ -22,11 +30,18 @@ export function ChatInput({ onSend, disabled, placeholder = 'Type your message..
     }
   }, [value]);
 
-  const handleSubmit = () => {
-    if (value.trim() && !disabled) {
-      onSend(value.trim(), attachment);
-      setValue('');
-      setAttachment(undefined);
+  const handleSubmit = async () => {
+    if (!value.trim() || disabled) return;
+    const message = value.trim();
+    const pendingAttachment = attachment;
+    // Clear immediately: the message is on its way and the composer stays ready.
+    setValue('');
+    setAttachment(undefined);
+
+    const keepText = await onSend(message, pendingAttachment);
+    if (keepText === true) {
+      setValue(message);
+      setAttachment(pendingAttachment);
     }
   };
 
@@ -43,7 +58,7 @@ export function ChatInput({ onSend, disabled, placeholder = 'Type your message..
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      handleSubmit();
+      void handleSubmit();
     }
   };
 
@@ -96,7 +111,7 @@ export function ChatInput({ onSend, disabled, placeholder = 'Type your message..
         )}
       />
       <Button
-        onClick={handleSubmit}
+        onClick={() => void handleSubmit()}
         disabled={disabled || !value.trim()}
         size="icon"
         data-testid="button-send-message"

@@ -18,6 +18,7 @@ import { requireAuth } from "../../lib/session";
 import { detectImageMediaType, imageExtension } from "../../lib/image-media";
 import { chatLimiter } from "../../middleware/rate-limit";
 import { sendValidationError } from "../../lib/validation";
+import { logProviderError, sendProviderError } from "../../lib/provider-errors";
 
 const router: IRouter = Router();
 
@@ -131,8 +132,12 @@ router.get("/openai/search", async (req, res): Promise<void> => {
   try {
     const sources = await searchPublicSources(query);
     res.json({ query, sources });
-  } catch {
-    res.status(502).json({ error: "Live search is temporarily unavailable." });
+  } catch (error) {
+    // BUG-014: Search is one of the tools that must answer with the shared,
+    // safe provider copy instead of its own ad-hoc 502 text: both public
+    // sources being unreachable is the same "upstream did not respond" class as
+    // a provider timeout.
+    sendProviderError(res, error, { reqId: String(req.id), route: "search" });
   }
 });
 
@@ -317,19 +322,29 @@ router.post(
       return;
     }
 
-    // Persist user message
-    await db.insert(messages).values({
-      conversationId: id,
-      role: "user",
-      content: content ?? "",
-    });
-
-    // Build message history for context
+    // Load the conversation's history first: it decides both the provider
+    // context and whether this request is a *retry* (BUG-014). Retry resends the
+    // same content, and the earlier attempt already persisted that prompt
+    // without producing an assistant reply — inserting it again would duplicate
+    // the prompt in the transcript and in every later provider call.
     const history = await db
       .select()
       .from(messages)
       .where(eq(messages.conversationId, id))
       .orderBy(asc(messages.createdAt));
+
+    const previous = history[history.length - 1];
+    const isRetryOfUnansweredPrompt =
+      previous?.role === "user" && previous.content === (content ?? "");
+
+    // Persist user message
+    if (!isRetryOfUnansweredPrompt) {
+      await db.insert(messages).values({
+        conversationId: id,
+        role: "user",
+        content: content ?? "",
+      });
+    }
 
     // Build system prompt based on mode
     const modePrompts: Record<string, string> = {
@@ -352,12 +367,19 @@ router.post(
       ? `${systemPrompt}\n\nUse the following supplied context when it is relevant. Do not claim you searched beyond these materials. If the context is insufficient, say so.\n\n${suppliedContext}`
       : systemPrompt;
 
+    // The persisted history, plus this message when it was just inserted (on a
+    // retry it is already the last row, so it is not added twice).
+    const persistedTurns = history.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    }));
+    const turns = isRetryOfUnansweredPrompt
+      ? persistedTurns
+      : [...persistedTurns, { role: "user" as const, content: content ?? "" }];
+
     const chatMessages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
       { role: "system", content: groundedPrompt },
-      ...history.slice(-20).map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
+      ...turns.slice(-20),
     ];
 
     // SSE headers are withheld until the provider produces its first content
@@ -419,14 +441,21 @@ router.post(
         // Client disconnected: stop quietly, nothing to respond or persist.
         return;
       }
-      const detail = error instanceof Error ? error.message : "The AI provider is temporarily unavailable.";
+      // BUG-014: the provider's own message — which can echo part of the API
+      // key — is logged (redacted, with the request id) and never forwarded.
+      // The client receives fixed copy and the mapped status.
+      const mapped = logProviderError(error, {
+        reqId: String(req.id),
+        route: "chat",
+        mode: mode ?? conv.mode,
+      });
       if (res.headersSent) {
         // Mid-stream failure: headers are already out, only an SSE frame can carry the error.
-        res.write(`data: ${JSON.stringify({ error: detail })}\n\n`);
+        res.write(`data: ${JSON.stringify({ error: mapped.message })}\n\n`);
         res.end();
       } else {
         // Provider failed before any content: clean HTTP error the client can retry on.
-        res.status(502).json({ error: detail });
+        res.status(mapped.status).json({ error: mapped.message });
       }
       return;
     }
@@ -510,9 +539,9 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
   try {
     buffer = await generateImageBuffer(prompt, size);
   } catch (error) {
-    const detail =
-      error instanceof Error ? error.message : "The image provider is temporarily unavailable.";
-    res.status(502).json({ error: detail });
+    // BUG-014: Artist mode reports provider failures exactly like Chat — same
+    // classification, same safe copy, no provider text and no key fragments.
+    sendProviderError(res, error, { reqId: String(req.id), route: "image" });
     return;
   }
   // Detect the bytes' real format (Audit 2 F-04): the provider is configured

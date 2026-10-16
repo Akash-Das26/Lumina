@@ -1,6 +1,9 @@
 // @vitest-environment node
 // Regression tests for BUG-002: provider failures before the first streamed
-// content chunk must produce a clean HTTP 502 instead of an SSE error frame.
+// content chunk must produce a clean HTTP error status instead of an SSE error
+// frame. The status itself is now the mapped one from BUG-014 (a connection
+// failure is 504, an unclassified failure 500), and the body carries fixed
+// client copy rather than the provider's own text.
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
@@ -76,14 +79,19 @@ function postMessage(server: TestServer) {
 }
 
 describe("BUG-002: provider failure before streaming starts", () => {
-  it("returns 502 JSON when the provider rejects before any content", async () => {
+  it("returns JSON with a mapped status when the provider rejects before any content", async () => {
     openaiCreateMock.mockRejectedValue(new Error("connection refused"));
 
     const res = await postMessage(server);
 
-    expect(res.status).toBe(502);
+    // A connection failure is the "provider did not respond" class (BUG-014).
+    expect(res.status).toBe(504);
     expect(res.headers["content-type"]).toContain("application/json");
-    expect(JSON.parse(res.body)).toEqual({ error: "connection refused" });
+    expect(JSON.parse(res.body)).toEqual({
+      error: "The AI service did not respond. Please try again.",
+    });
+    // The provider's own message is not forwarded.
+    expect(res.body).not.toContain("connection refused");
   });
 
   it("does not emit an SSE error frame when streaming never started", async () => {
@@ -93,6 +101,10 @@ describe("BUG-002: provider failure before streaming starts", () => {
 
     expect(res.body.startsWith("data:")).toBe(false);
     expect(res.headers["content-type"]).not.toContain("text/event-stream");
+    // Unclassified failure: generic 500 copy, never the internal message.
+    expect(res.status).toBe(500);
+    expect(JSON.parse(res.body)).toEqual({ error: "Internal server error" });
+    expect(res.body).not.toContain("boom");
   });
 
   it("still streams SSE and completes when the provider succeeds", async () => {

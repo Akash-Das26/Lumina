@@ -28,7 +28,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ModeKey, getModeById } from '@/lib/modes';
 import { useAuth } from '@/lib/auth-provider';
-import { streamMessage } from '@/lib/stream-message';
+import { CHAT_UNREACHABLE_MESSAGE, ChatSendError, streamMessage } from '@/lib/stream-message';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useSeo } from '@/lib/seo';
@@ -39,6 +39,10 @@ interface TempMessage {
   content: string;
   isStreaming?: boolean;
   isGenerating?: boolean;
+  /** BUG-014: the send failed; the message stays visible with a Retry control. */
+  failed?: boolean;
+  /** The mode the failed message was sent with, so Retry reuses it. */
+  failedMode?: ModeKey;
 }
 
 /** Closest earlier user message — the prompt behind a generated image. */
@@ -54,6 +58,38 @@ interface SearchSource {
   url: string;
   snippet: string;
   domain: string;
+}
+
+/**
+ * BUG-014: a failed search-sources fetch, carrying its status so the page can
+ * tell "the API answered with a mapped error" (keep the message, offer Retry)
+ * from "the API was never reached" (take the text back).
+ */
+class SearchUnavailableError extends Error {
+  readonly status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = 'SearchUnavailableError';
+    this.status = status;
+  }
+}
+
+/**
+ * Copy for a failed send: the API's own mapped message when there is one (API
+ * errors and `ChatSendError` both carry it), otherwise the transport message.
+ * Never the provider's raw text — the server stopped forwarding it (BUG-014).
+ */
+function messageForFailure(error: unknown): string {
+  const body = (error as { data?: { error?: unknown } } | null)?.data;
+  if (body && typeof body.error === 'string' && body.error.trim()) return body.error;
+  // No status means the API never answered, so a browser-level message like
+  // "Failed to fetch" would be no help — say what actually happened.
+  if (typeof (error as { status?: unknown } | null)?.status !== 'number') {
+    return CHAT_UNREACHABLE_MESSAGE;
+  }
+  if (error instanceof Error && error.message) return error.message;
+  return 'Please try again.';
 }
 
 export default function ChatConversation() {
@@ -131,8 +167,47 @@ export default function ChatConversation() {
     );
   };
 
-  const handleSendMessage = async (content: string, attachment?: { name: string; text: string }) => {
-    if (!id) return;
+  /**
+   * Removes the optimistic pair (assistant placeholder + user bubble) whose
+   * request never reached the API. Right only in that case: the server never
+   * persisted the message, so the transcript shows no trace of it, and the typed
+   * text goes back into the composer instead (BUG-014).
+   */
+  const dropUnsentMessage = () => {
+    setIsStreamingActive(false);
+    setTempMessages((prev) => {
+      const withoutPlaceholder = prev.filter((m) => !(m.isStreaming || m.isGenerating));
+      return withoutPlaceholder[withoutPlaceholder.length - 1]?.role === 'user'
+        ? withoutPlaceholder.slice(0, -1)
+        : withoutPlaceholder;
+    });
+  };
+
+  /** Keeps the failed message in place and flags it so Retry can resend it. */
+  const markMessageFailed = (content: string, mode: ModeKey) => {
+    setIsStreamingActive(false);
+    setTempMessages((prev) => {
+      const withoutPlaceholder = prev.filter((m) => !(m.isStreaming || m.isGenerating));
+      return withoutPlaceholder.map((m, index) =>
+        index === withoutPlaceholder.length - 1 && m.role === 'user' && m.content === content
+          ? { ...m, failed: true, failedMode: mode }
+          : m,
+      );
+    });
+  };
+
+  /**
+   * Sends a message. Resolves with `true` when the composer must keep the text:
+   * the request never reached the API, so nothing was persisted and retyping it
+   * would be punishment for a network failure (BUG-014).
+   */
+  const handleSendMessage = async (
+    content: string,
+    attachment?: { name: string; text: string },
+    options?: { mode?: ModeKey },
+  ): Promise<boolean> => {
+    if (!id) return false;
+    const mode = options?.mode ?? selectedMode;
 
     // Add user message immediately
     setTempMessages((prev) => [...prev, { role: 'user', content }]);
@@ -140,59 +215,62 @@ export default function ChatConversation() {
     // Artist mode: generate an image via the image API. Passing conversationId
     // makes the server persist the prompt + image, so the result survives a
     // reload instead of living only in local component state.
-    if (selectedMode === 'artist') {
+    if (mode === 'artist') {
       setTempMessages((prev) => [
         ...prev,
         { role: 'assistant', content: 'Generating image...', isGenerating: true },
       ]);
 
-      generateImage.mutate(
-        { data: { prompt: content, conversationId: id } },
-        {
-          onSuccess: async (result) => {
-            // Render the image immediately for instant feedback...
-            setTempMessages((prev) => {
-              const updated = [...prev];
-              updated[updated.length - 1] = {
-                role: 'assistant',
-                // The server sniffs the real format (Audit 2 F-04); fall back to
-                // PNG when talking to an older API without media_type.
-                content: `![Generated image](data:${result.media_type ?? 'image/png'};base64,${result.b64_json})`,
-                isGenerating: false,
-                isStreaming: false,
-              };
-              return updated;
-            });
-            // ...then drop the optimistic pair once the refetched conversation
-            // already carries the persisted messages (avoids showing them twice).
-            await Promise.all([
-              queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) }),
-              queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() }),
-            ]);
-            setTempMessages([]);
-          },
-          onError: (error) => {
-            setTempMessages((prev) => prev.slice(0, -1));
-            toast({
-              title: 'Image generation failed',
-              description: error instanceof Error ? error.message : 'Unknown error',
-              variant: 'destructive',
-            });
-          },
-        }
-      );
-      return;
+      try {
+        const result = await generateImage.mutateAsync({
+          data: { prompt: content, conversationId: id },
+        });
+        // Render the image immediately for instant feedback...
+        setTempMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1] = {
+            role: 'assistant',
+            // The server sniffs the real format (Audit 2 F-04); fall back to
+            // PNG when talking to an older API without media_type.
+            content: `![Generated image](data:${result.media_type ?? 'image/png'};base64,${result.b64_json})`,
+            isGenerating: false,
+            isStreaming: false,
+          };
+          return updated;
+        });
+        // ...then drop the optimistic pair once the refetched conversation
+        // already carries the persisted messages (avoids showing them twice).
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) }),
+          queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() }),
+        ]);
+        setTempMessages([]);
+        return false;
+      } catch (error) {
+        return failSend(content, mode, error, 'Image generation failed');
+      }
     }
 
     let context = attachment
       ? `Attached document: ${attachment.name}\n\n${attachment.text}`
       : '';
 
-    if (selectedMode === 'search') {
+    if (mode === 'search') {
       try {
         const base = import.meta.env.BASE_URL.replace(/\/$/, '');
         const response = await fetch(`${base}/api/openai/search?q=${encodeURIComponent(content)}`);
-        if (!response.ok) throw new Error('Live search is unavailable right now.');
+        if (!response.ok) {
+          // The API answers JSON for every failure class; its copy is safe to
+          // show (BUG-014), and only a body-less response needs a fallback.
+          let detail = 'Live search is unavailable right now.';
+          try {
+            const body = (await response.json()) as { error?: unknown } | null;
+            if (typeof body?.error === 'string' && body.error) detail = body.error;
+          } catch {
+            // Keep the fallback copy.
+          }
+          throw new SearchUnavailableError(detail, response.status);
+        }
         const result = (await response.json()) as { sources: SearchSource[] };
         setSources(result.sources || []);
         const sourceContext = (result.sources || [])
@@ -200,13 +278,7 @@ export default function ChatConversation() {
           .join('\n\n');
         context = `${context ? `${context}\n\n` : ''}Live search sources:\n${sourceContext || 'No public sources were returned.'}`;
       } catch (error) {
-        toast({
-          title: 'Search unavailable',
-          description: error instanceof Error ? error.message : 'Try again in a moment.',
-          variant: 'destructive',
-        });
-        setTempMessages((prev) => prev.slice(0, -1));
-        return;
+        return failSend(content, mode, error, 'Search unavailable');
       }
     } else {
       setSources([]);
@@ -216,10 +288,11 @@ export default function ChatConversation() {
     setIsStreamingActive(true);
     setTempMessages((prev) => [...prev, { role: 'assistant', content: '', isStreaming: true }]);
 
+    let keepText = false;
     await streamMessage(
       id,
       content,
-      selectedMode,
+      mode,
       (chunk) => {
         setTempMessages((prev) => {
           const updated = [...prev];
@@ -244,16 +317,47 @@ export default function ChatConversation() {
         queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() });
       },
       (error) => {
-        setIsStreamingActive(false);
-        setTempMessages((prev) => prev.slice(0, -1));
-        toast({
-          title: 'Message failed',
-          description: error.message,
-          variant: 'destructive',
-        });
+        keepText = failSend(content, mode, error, 'Message failed');
       },
       context,
     );
+    return keepText;
+  };
+
+  /**
+   * Reports a failed send and decides what stays on screen (BUG-014).
+   *
+   * The API answered (any status, including a mapped provider failure): the
+   * message is already persisted, so it stays in the transcript flagged as
+   * failed with a Retry control. No HTTP response at all: nothing was saved, so
+   * the optimistic bubble is dropped and the caller restores the typed text into
+   * the composer.
+   */
+  const failSend = (content: string, mode: ModeKey, error: unknown, title: string): boolean => {
+    const reachedServer = typeof (error as { status?: unknown } | null)?.status === 'number';
+    toast({
+      title,
+      description: messageForFailure(error),
+      variant: 'destructive',
+    });
+    if (reachedServer) {
+      markMessageFailed(content, mode);
+      return false;
+    }
+    dropUnsentMessage();
+    return true;
+  };
+
+  /**
+   * Resends a failed message (BUG-014). The failed copy is removed first so it
+   * cannot linger next to its own retry; the mode it was sent with is reused, so
+   * a retry after switching modes still goes to the same tool.
+   */
+  const handleRetryMessage = async (content: string, mode?: ModeKey) => {
+    setTempMessages((prev) =>
+      prev.filter((m) => !(m.failed && m.role === 'user' && m.content === content)),
+    );
+    await handleSendMessage(content, undefined, { mode: mode ?? selectedMode });
   };
 
   const loadEarlierMessages = async () => {
@@ -526,6 +630,12 @@ export default function ChatConversation() {
                 isStreaming={msg.isStreaming}
                 isGenerating={msg.isGenerating}
                 isRegenerating={msg.id != null && regeneratingId === msg.id}
+                failed={msg.failed}
+                onRetry={
+                  msg.failed
+                    ? () => void handleRetryMessage(msg.content, msg.failedMode)
+                    : undefined
+                }
                 onOpenImage={imageIndex >= 0 ? () => setLightboxIndex(imageIndex) : undefined}
                 onRegenerate={
                   msg.id != null && imagePrompt

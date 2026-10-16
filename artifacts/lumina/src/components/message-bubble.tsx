@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils';
 import { renderMarkdown } from '@/lib/markdown';
 import { imageExtension } from '@/lib/image';
-import { Bot, User, Loader2, Download, RefreshCw } from 'lucide-react';
+import { AlertTriangle, Bot, User, Loader2, Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface MessageBubbleProps {
@@ -10,6 +10,9 @@ interface MessageBubbleProps {
   isStreaming?: boolean;
   isGenerating?: boolean;
   isRegenerating?: boolean;
+  /** The send failed; the bubble keeps the text and offers Retry (BUG-014). */
+  failed?: boolean;
+  onRetry?: () => void;
   onRegenerate?: () => void;
   onOpenImage?: () => void;
 }
@@ -30,6 +33,8 @@ export function MessageBubble({
   isStreaming,
   isGenerating,
   isRegenerating,
+  failed,
+  onRetry,
   onRegenerate,
   onOpenImage,
 }: MessageBubbleProps) {
@@ -94,6 +99,27 @@ export function MessageBubble({
             )}
             {isStreaming && !isImage && (
               <span className="inline-block w-2 h-4 ml-1 bg-primary animate-pulse-glow rounded-sm" />
+            )}
+            {failed && (
+              <div
+                className="mt-2 flex flex-wrap items-center gap-2 text-xs text-destructive"
+                data-testid="message-failed"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                <span>Message failed to send</span>
+                {onRetry && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2 text-xs"
+                    onClick={onRetry}
+                    data-testid="button-retry-message"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Retry
+                  </Button>
+                )}
+              </div>
             )}
             {isImage && imageSrc && (
               <div className="mt-2 flex items-center gap-2">

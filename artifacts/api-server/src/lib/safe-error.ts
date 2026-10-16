@@ -9,9 +9,41 @@
 // Any `scheme://…` token: postgresql://user:pass@host/db, https://host/?token=…
 const URL_LIKE = /\b[a-z][a-z0-9+.-]*:\/\/[^\s"'`]+/gi;
 
-/** Replaces anything that looks like a URL (and therefore may embed credentials). */
+// A provider key as it appears inside the provider's own error text: a real
+// value (`sk-…`, `gsk_…`, `xai-…`) or the masked echo providers use
+// (BUG-014): OpenAI answers `Incorrect API key provided: sk-abcd***wxyz`.
+const KEY_LIKE = /\b(?:sk|gsk|rk|xai|pk)-[A-Za-z0-9_-]{6,}/g;
+const MASKED_KEY_LIKE = /\b[A-Za-z0-9_-]{3,}\*{3,}[A-Za-z0-9_-]*/g;
+
+/** Variables whose values are secrets and must never reach a log or a response. */
+const SECRET_ENV_VARS = [
+  "OPENAI_API_KEY",
+  "AI_INTEGRATIONS_OPENAI_API_KEY",
+  "SESSION_SECRET",
+] as const;
+
+// Short values are not treated as secrets: replacing a 3-character string
+// everywhere would mangle unrelated text while adding no protection.
+const MIN_SECRET_LENGTH = 8;
+
+/** The configured secret values, so a log can never echo the real key. */
+function configuredSecrets(): string[] {
+  return SECRET_ENV_VARS.map((name) => process.env[name]).filter(
+    (value): value is string => typeof value === "string" && value.length >= MIN_SECRET_LENGTH,
+  );
+}
+
+/**
+ * Replaces anything that looks like a URL (and therefore may embed
+ * credentials), a configured secret value, or a provider key echoed by the
+ * provider itself.
+ */
 export function redactSecrets(text: string): string {
-  return text.replace(URL_LIKE, "<redacted-url>");
+  let redacted = text.replace(URL_LIKE, "<redacted-url>");
+  for (const secret of configuredSecrets()) {
+    redacted = redacted.split(secret).join("<redacted-key>");
+  }
+  return redacted.replace(KEY_LIKE, "<redacted-key>").replace(MASKED_KEY_LIKE, "<redacted-key>");
 }
 
 export function errorMessage(error: unknown): string {
