@@ -117,19 +117,34 @@ Every 500 is also logged by the API itself, as one JSON line at `error` level wi
 
 **`password authentication failed for user "…"`**
 
-`DATABASE_URL` does not match a role that exists in the running PostgreSQL, so nothing can connect. Check the role and its password, then fix `.env` (or reset the password):
+`DATABASE_URL` and the running PostgreSQL disagree about that user's password (PostgreSQL reports the same message when the role does not exist at all, so check both). Run these as the `postgres` superuser:
 
 ```bash
-psql -U postgres -c "\du"                                  # list roles
-psql -U postgres -c "ALTER ROLE lumina_user WITH PASSWORD 'new-password';"
+# Debian/Ubuntu: connect as the postgres OS user over the local socket
+# (no superuser role password needed; this is the setup the install steps above create)
+sudo -u postgres psql -c "\du"                             # does the role exist? note its attributes
+sudo -u postgres psql -c "ALTER ROLE lumina_user WITH PASSWORD 'new-password';"
+# ...and if \du did not list it at all:
+sudo -u postgres createuser --pwprompt lumina_user           # then: createdb -O lumina_user lumina
+
+# macOS (Homebrew) or any server where the superuser has a password of its own
+psql -U postgres -h localhost -c "\du"
 ```
 
-`DATABASE_URL` must name the same user, password, host, port and database in one URL, e.g. `postgresql://lumina_user:new-password@localhost:5432/lumina`. Re-run `pnpm db:push` afterwards — until it succeeds, the tables do not exist.
+`DATABASE_URL` must name the same user, password, host, port and database in one URL:
+
+```env
+DATABASE_URL=postgresql://lumina_user:new-password@localhost:5432/lumina
+```
+
+**Special characters in the password must be URL-encoded** in that URL — `@` → `%40`, `#` → `%23`, `/` → `%2F`, `:` → `%3A`, `?` → `%3F`, `%` → `%25` (PostgreSQL receives the decoded value). A password containing `@` is the most common cause of "the password is right but it still fails"; choosing a password of letters, digits, `-` and `_` avoids the question entirely.
+
+Re-run `pnpm db:push` afterwards — until it succeeds the tables do not exist, and the API will refuse to start with `schema-missing`.
 
 **`database "lumina" does not exist`**
 
 ```bash
-createdb lumina            # or: psql -U postgres -c "CREATE DATABASE lumina;"
+createdb lumina            # or: sudo -u postgres createdb -O lumina_user lumina
 ```
 
 **`relation "users" does not exist`** (or `database: schema-missing`)
