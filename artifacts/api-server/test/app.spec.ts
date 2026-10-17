@@ -63,7 +63,7 @@ describe("api-server smoke", () => {
     expect(res.status).toBe(200);
   });
 
-  it("POST /api/openai/conversations returns 400 for invalid body", async () => {
+  it("POST /api/openai/conversations returns 400 with a clean error shape for an invalid body", async () => {
     const res = await server.request("POST", "/api/openai/conversations", {
       headers: {
         "content-type": "application/json",
@@ -72,6 +72,48 @@ describe("api-server smoke", () => {
       body: JSON.stringify({ title: 123 }),
       });
     expect(res.status).toBe(400);
+
+    // BUG-012: schemas used to answer with `error: <issues serialised to JSON>`,
+    // which is what the sign-up form rendered verbatim. The response is now a
+    // structured, message-only shape.
+    const body = JSON.parse(res.body) as {
+      error: string;
+      fieldErrors: Record<string, string[]>;
+      formErrors: string[];
+    };
+    expect(body.error).toBe("Validation failed");
+    expect(body.fieldErrors.title).toEqual(["Invalid input: expected string, received number"]);
+    expect(body.formErrors).toEqual([]);
+    expect(res.body).not.toMatch(/"code"|"origin"|"path"/);
+  });
+
+  it("answers a malformed JSON body with a JSON 400, not an HTML stack page (BUG-013)", async () => {
+    const res = await server.request("POST", "/api/auth/register", {
+      headers: { "content-type": "application/json" },
+      body: "{ not json",
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(res.body)).toEqual({ error: "Malformed request body." });
+    expect(res.body).not.toMatch(/<html|<pre|SyntaxError|at |\\.ts:/);
+  });
+
+  it("answers unknown /api paths with a JSON body, never Express's HTML page", async () => {
+    // The openai router's requireAuth guards every /api path that no route
+    // matches, so an anonymous request is a JSON 401...
+    const anonymous = await server.request("GET", "/api/does-not-exist");
+    expect(anonymous.status).toBe(401);
+    expect(anonymous.headers["content-type"]).toContain("application/json");
+
+    // ...and a signed-in request reaches the JSON 404 handler.
+    const authed = await server.request("GET", "/api/does-not-exist", {
+      headers: { cookie: `lumina_session=${createSessionToken(1)}` },
+    });
+    expect(authed.status).toBe(404);
+    expect(authed.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(authed.body)).toEqual({ error: "Not found" });
+    expect(authed.body).not.toMatch(/<html|<pre/);
   });
 
   it("requires authentication for conversation routes", async () => {

@@ -4,9 +4,22 @@ import { Sparkles, Mail, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { FieldError } from '@/components/field-error';
 import { loginAuth } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSeo } from '@/lib/seo';
+import { loginSchema } from '@/lib/auth-schemas';
+import {
+  formatApiFieldErrors,
+  formatSubmitError,
+  formatZodErrors,
+  withoutFieldError,
+  type FieldErrors,
+} from '@/lib/form-errors';
+
+type Field = 'email' | 'password';
+
+const GENERIC_ERROR = 'Unable to sign in. Please try again.';
 
 export default function SignIn() {
   useSeo({
@@ -19,21 +32,51 @@ export default function SignIn() {
   const queryClient = useQueryClient();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Field-level problems render under their input; `error` is only for
+  // form-level ones (bad credentials, server failure, network).
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors<Field>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  const values = () => ({ email, password });
+
+  const edit = (field: Field) => {
+    setFieldErrors((prev) => withoutFieldError(prev, field));
+    setError(null);
+  };
+
+  const handleBlur = (field: Field) => {
+    const parsed = loginSchema.safeParse(values());
+    const issues = parsed.success ? {} : formatZodErrors<Field>(parsed.error);
+    setFieldErrors((prev) =>
+      issues[field] ? { ...prev, [field]: issues[field] } : withoutFieldError(prev, field),
+    );
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Client-side check first: instant feedback, no round trip. The server
+    // stays the source of truth because this step can be bypassed.
+    const parsed = loginSchema.safeParse(values());
+    if (!parsed.success) {
+      setFieldErrors(formatZodErrors<Field>(parsed.error));
+      return;
+    }
+    setFieldErrors({});
     setSubmitting(true);
     try {
-      const user = await loginAuth({ email, password });
+      const user = await loginAuth(parsed.data);
       queryClient.setQueryData(['auth', 'me'], user);
       setLocation('/chat');
     } catch (err) {
-      const message =
-        (err as { data?: { error?: string } })?.data?.error ?? 'Unable to sign in. Please try again.';
-      setError(message);
+      const serverFieldErrors = formatApiFieldErrors<Field>(err);
+      if (Object.keys(serverFieldErrors).length > 0) {
+        setFieldErrors(serverFieldErrors);
+      } else {
+        setError(formatSubmitError(err, { fallback: GENERIC_ERROR }));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -50,7 +93,8 @@ export default function SignIn() {
           <p className="text-muted-foreground">Sign in to continue to Lumina</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
+        {/* noValidate: the browser's own bubbles would pre-empt the inline messages below. */}
+        <form onSubmit={handleSubmit} noValidate className="space-y-6">
           {error && (
             <p className="text-sm text-destructive" data-testid="sign-in-error" role="alert">
               {error}
@@ -65,12 +109,19 @@ export default function SignIn() {
               id="email"
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                edit('email');
+              }}
+              onBlur={() => handleBlur('email')}
               placeholder="you@example.com"
               required
+              aria-invalid={Boolean(fieldErrors.email)}
+              aria-describedby={fieldErrors.email ? 'email-error' : undefined}
               data-testid="input-email"
               className="h-12"
             />
+            <FieldError id="email-error" message={fieldErrors.email} data-testid="email-error" />
           </div>
 
           <div className="space-y-2">
@@ -82,11 +133,22 @@ export default function SignIn() {
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                edit('password');
+              }}
+              onBlur={() => handleBlur('password')}
               placeholder="••••••••"
               required
+              aria-invalid={Boolean(fieldErrors.password)}
+              aria-describedby={fieldErrors.password ? 'password-error' : undefined}
               data-testid="input-password"
               className="h-12"
+            />
+            <FieldError
+              id="password-error"
+              message={fieldErrors.password}
+              data-testid="password-error"
             />
           </div>
 

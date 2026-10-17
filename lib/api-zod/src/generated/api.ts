@@ -13,7 +13,22 @@ import * as zod from 'zod';
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
-  "status": zod.string()
+  "status": zod.string(),
+  "database": zod.enum(['ok', 'unreachable', 'schema-missing']).optional().describe('Database readiness, reported by `\/health`.'),
+  "message": zod.string().optional().describe('Safe, actionable summary when the API is degraded.')
+})
+
+
+/**
+ * Reports whether the API can reach PostgreSQL and whether its schema is
+ * applied. Answers 503 with an actionable message when the database is
+ * unreachable or not initialized. `/healthz` stays a pure liveness probe.
+ * @summary Readiness check (includes database connectivity)
+ */
+export const ReadinessCheckResponse = zod.object({
+  "status": zod.string(),
+  "database": zod.enum(['ok', 'unreachable', 'schema-missing']).optional().describe('Database readiness, reported by `\/health`.'),
+  "message": zod.string().optional().describe('Safe, actionable summary when the API is degraded.')
 })
 
 

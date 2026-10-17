@@ -1,13 +1,17 @@
 #!/usr/bin/env node
-// End-to-end browser verification of the sign-up + image-generation flow.
+// End-to-end browser verification of the sign-up + image-generation flow, plus
+// the provider-failure path of BUG-014.
 //
 //     pnpm verify:flow
 //
 // It stands up a throwaway stack — an ephemeral PostgreSQL, the real API
 // server and Vite dev server (via scripts/dev-local.mjs) and a stub
-// OpenAI-compatible image provider — then drives headless Chrome over the
-// Chrome DevTools Protocol: sign up, start an Artist conversation, generate an
-// image and open it in the lightbox.
+// OpenAI-compatible provider — then drives headless Chrome over the Chrome
+// DevTools Protocol: sign up, start an Artist conversation, generate an image
+// and open it in the lightbox. It then starts a Chat conversation, where the
+// stub rejects the key with the real provider's `401 Incorrect API key
+// provided: …` message, and asserts the UI shows the mapped copy, offers Retry
+// on the failed message, and never displays the provider's text.
 //
 // It does NOT modify the repo's .env: connection settings are passed straight
 // to the child processes and to `db:push`.
@@ -76,6 +80,40 @@ async function waitForHttp(url, label, timeoutMs = 90000) {
   throw new Error(`timed out waiting for ${label} at ${url}`);
 }
 
+/**
+ * Clicks an element that is really on screen.
+ *
+ * The generated image arrives as an <img> that has no height until its bytes
+ * decode, and the transcript scrolls as messages land, so a plain
+ * `clickSelector` can fire at coordinates that hold nothing (or nothing yet).
+ * This waits for a non-zero box, brings it into view and checks the click point
+ * is inside the viewport before dispatching it.
+ */
+async function clickInView(d, selector, label = selector, timeout = 45000) {
+  const start = Date.now();
+  let box = null;
+  while (Date.now() - start < timeout) {
+    if (await d.exists(selector)) {
+      box = await d.rect(selector);
+      if (box && box.w > 0 && box.h > 0) break;
+    }
+    box = null;
+    await sleep(150);
+  }
+  if (!box) throw new Error(`timeout waiting for a clickable ${label} (${selector})`);
+
+  await d.evaluate(
+    `document.querySelector(${d.q(selector)}).scrollIntoView({ block: 'center', inline: 'center' })`,
+  );
+  await sleep(250);
+  box = await d.rect(selector);
+  const viewport = await d.evaluate(`({ w: innerWidth, h: innerHeight })`);
+  if (box.x < 0 || box.y < 0 || box.x > viewport.w || box.y > viewport.h) {
+    throw new Error(`${label} is outside the viewport (${box.x},${box.y} of ${viewport.w}x${viewport.h})`);
+  }
+  await d.clickSelector(selector);
+}
+
 async function runFlow(session, webUrl, results) {
   await session.send('Runtime.enable');
   await session.send('Page.enable');
@@ -103,13 +141,13 @@ async function runFlow(session, webUrl, results) {
   await d.waitFor('[data-testid=button-open-image-lightbox]', 'generated image', 45000);
   results.imageMessagePresent = await d.exists('[data-testid=button-open-image-lightbox]');
 
-  await d.clickSelector('[data-testid=button-open-image-lightbox]');
+  await clickInView(d, '[data-testid=button-open-image-lightbox]', 'generated image');
   await d.waitFor('[data-testid=image-lightbox]', 'lightbox');
   // Let the dialog's open animation settle before measuring the stage.
   await sleep(400);
   results.lightboxCounter = await d.evaluate(`document.querySelector('[data-testid=lightbox-counter]').textContent`);
   results.lightboxZoom = await d.evaluate(`document.querySelector('[data-testid=lightbox-zoom]').textContent`);
-  results.lightboxSrcPrefix = await d.evaluate(`document.querySelector('[data-testid=image-lightbox]').src.slice(0, 30)`);
+  results.lightboxSrc = await d.evaluate(`document.querySelector('[data-testid=image-lightbox]').src`);
 
   const zoom = () => d.evaluate(`document.querySelector('[data-testid=lightbox-zoom]').textContent`);
   let current = await zoom();
@@ -125,6 +163,45 @@ async function runFlow(session, webUrl, results) {
   await d.key('Escape', 'Escape', 27);
   await d.waitGone('[data-testid=image-lightbox]', 'lightbox after Escape', 5000);
   results.lightboxClosedByEscape = !(await d.exists('[data-testid=image-lightbox]'));
+
+  await runProviderFailureFlow(session, d, webUrl, results);
+}
+
+/**
+ * BUG-014: the stub provider rejects the API key, so every chat request fails
+ * with the provider's own 401. The user must see the mapped copy and a Retry
+ * control on their message — and never the provider's text, its URL, or the key
+ * fragment it echoes.
+ */
+async function runProviderFailureFlow(session, d, webUrl, results) {
+  await session.send('Page.navigate', { url: `${webUrl}/chat` });
+  await d.waitFor('[data-testid=mode-chat]', 'chat home after the image flow');
+  await d.clickSelector('[data-testid=mode-chat]');
+  await d.clickSelector('[data-testid=button-start-conversation]');
+  await d.waitFor('[data-testid=input-chat-message]', 'chat composer');
+
+  await d.typeInto('[data-testid=input-chat-message]', 'does the provider key work?');
+  await d.clickSelector('[data-testid=button-send-message]');
+  await d.waitFor('[data-testid=button-retry-message]', 'failed message with Retry', 30000);
+
+  results.failedMessageText = await d.evaluate(
+    `document.querySelector('[data-testid=message-failed]').textContent`,
+  );
+  results.failedMessageStillShown = await d.evaluate(
+    `document.body.innerText.includes('does the provider key work?')`,
+  );
+  results.mappedCopyInToast = await d.evaluate(
+    `document.body.innerText.includes('The AI service is not configured correctly. Please contact the administrator.')`,
+  );
+  results.providerTextInPage = await d.evaluate(
+    `/Incorrect API key|platform\\.openai\\.com|replace-|invalid_api_key/.test(document.body.innerText)`,
+  );
+  results.retryVisible = await d.exists('[data-testid=button-retry-message]');
+
+  // Retry must resend the same message (a second request), not just clear the state.
+  await d.clickSelector('[data-testid=button-retry-message]');
+  await d.waitFor('[data-testid=button-retry-message]', 'Retry after resending', 30000);
+  results.retryVisibleAgain = await d.exists('[data-testid=button-retry-message]');
 }
 
 function collect(session, results) {
@@ -133,6 +210,10 @@ function collect(session, results) {
     .map((e) => ({ url: e.params.response.url, status: e.params.response.status }))
     .filter((r) => /\/api\//.test(r.url));
   results.apiResponses = responses.filter((r) => /register|generate-image|conversations/.test(r.url));
+  // One entry per chat send: the original attempt plus each Retry (BUG-014).
+  results.chatSendStatuses = responses
+    .filter((r) => /\/openai\/conversations\/\d+\/messages$/.test(r.url))
+    .map((r) => r.status);
   results.pageErrors = session.events
     .filter((e) => e.method === 'Runtime.exceptionThrown')
     .map((e) => e.params.exceptionDetails?.exception?.description || e.params.exceptionDetails?.text || 'exception');
@@ -159,11 +240,36 @@ function check(results, webUrl) {
   eq('imageMessagePresent', results.imageMessagePresent, true);
   eq('lightboxCounter', results.lightboxCounter, '1 / 1');
   eq('lightboxZoom', results.lightboxZoom, '100%');
-  if (!String(results.lightboxSrcPrefix).startsWith('data:image/png;base64')) {
-    failures.push('lightbox image is not the generated PNG: ' + results.lightboxSrcPrefix);
+  // The optimistic message renders a `data:image/png;base64,…` URI, while the
+  // persisted message references the server-hosted bytes
+  // (`/api/openai/images/<id>.png`, Audit 3 F-03 / BUG-008). Both are the
+  // generated PNG and both are accepted here; anything else is a regression.
+  const lightboxSrc = String(results.lightboxSrc || '');
+  const isGeneratedPng =
+    lightboxSrc.startsWith('data:image/png;base64') ||
+    /\/api\/openai\/images\/\d+\.png$/.test(lightboxSrc);
+  if (!isGeneratedPng) {
+    failures.push('lightbox image is not the generated PNG: ' + lightboxSrc.slice(0, 60));
   }
   eq('zoomAfterDoubleClick', results.zoomAfterDoubleClick, '200%');
   eq('lightboxClosedByEscape', results.lightboxClosedByEscape, true);
+
+  // BUG-014: a rejected provider key becomes safe copy + a retryable message.
+  eq('mappedCopyInToast', results.mappedCopyInToast, true);
+  eq('providerTextInPage', results.providerTextInPage, false);
+  eq('retryVisible', results.retryVisible, true);
+  eq('retryVisibleAgain', results.retryVisibleAgain, true);
+  eq('failedMessageStillShown', results.failedMessageStillShown, true);
+  if (!/Message failed to send/.test(results.failedMessageText || '')) {
+    failures.push('failed message is not marked: ' + results.failedMessageText);
+  }
+  const chatStatuses = results.chatSendStatuses || [];
+  if (chatStatuses.length < 2) {
+    failures.push('Retry did not resend the message (chat sends: ' + chatStatuses.join(',') + ')');
+  }
+  if (chatStatuses.some((status) => status !== 502)) {
+    failures.push('provider 401 was not mapped to 502: ' + chatStatuses.join(','));
+  }
   if (results.pageErrors && results.pageErrors.length) failures.push('page errors: ' + results.pageErrors.join(' | '));
   return failures;
 }

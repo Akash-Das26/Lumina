@@ -61,8 +61,73 @@ describe('SignIn', () => {
     expect(queryClient.getQueryData(['auth', 'me'])).toEqual(user);
   });
 
+  it('shows inline messages (never raw Zod output) for an invalid email and short password', async () => {
+    renderSignIn();
+
+    await fillAndSubmit('bbjhbvb@ewfw', '123456');
+
+    expect(await screen.findByTestId('email-error')).toHaveTextContent(
+      'Please enter a valid email address (e.g. name@example.com)',
+    );
+    expect(screen.getByTestId('password-error')).toHaveTextContent(
+      'Password must be at least 8 characters',
+    );
+    expect(mocks.loginAuth).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('sign-in-error')).not.toBeInTheDocument();
+    expect(document.body.textContent ?? '').not.toMatch(/invalid_format|too_small|"code"/);
+  });
+
+  it('shows a message under each field for an empty form without calling the API', async () => {
+    renderSignIn();
+
+    await userEvent.setup().click(screen.getByTestId('button-sign-in'));
+
+    expect(await screen.findByTestId('email-error')).toHaveTextContent(
+      'Please enter a valid email address (e.g. name@example.com)',
+    );
+    expect(screen.getByTestId('password-error')).toHaveTextContent(
+      'Password must be at least 8 characters',
+    );
+    expect(mocks.loginAuth).not.toHaveBeenCalled();
+  });
+
+  it('clears a field error as soon as the user edits that field', async () => {
+    renderSignIn();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('button-sign-in'));
+    expect(await screen.findByTestId('email-error')).toBeInTheDocument();
+
+    await user.type(screen.getByTestId('input-email'), 'ada@test.dev');
+
+    expect(screen.queryByTestId('email-error')).not.toBeInTheDocument();
+    expect(screen.getByTestId('password-error')).toBeInTheDocument();
+  });
+
+  it('renders server-returned field errors inline instead of a banner', async () => {
+    mocks.loginAuth.mockRejectedValue({
+      status: 400,
+      data: {
+        error: 'Validation failed',
+        fieldErrors: { password: ['Password must be at least 8 characters'] },
+        formErrors: [],
+      },
+    });
+    renderSignIn();
+
+    await fillAndSubmit();
+
+    expect(await screen.findByTestId('password-error')).toHaveTextContent(
+      'Password must be at least 8 characters',
+    );
+    expect(screen.queryByTestId('sign-in-error')).not.toBeInTheDocument();
+  });
+
   it('shows the API error message and stays put on failure', async () => {
-    mocks.loginAuth.mockRejectedValue({ data: { error: 'Invalid email or password' } });
+    mocks.loginAuth.mockRejectedValue({
+      status: 401,
+      data: { error: 'Invalid email or password' },
+    });
     renderSignIn();
 
     await fillAndSubmit('ada@test.dev', 'wrongpassword');
@@ -73,8 +138,24 @@ describe('SignIn', () => {
     expect(mocks.setLocation).not.toHaveBeenCalled();
   });
 
-  it('falls back to a generic message when the error has no detail', async () => {
-    mocks.loginAuth.mockRejectedValue(new Error('network down'));
+  it('says the server is unreachable when the request never arrives (BUG-013)', async () => {
+    mocks.loginAuth.mockRejectedValue(new TypeError('Failed to fetch'));
+    renderSignIn();
+
+    await fillAndSubmit();
+
+    await waitFor(() =>
+      expect(screen.getByTestId('sign-in-error')).toHaveTextContent(
+        "Can't reach the server. Check your connection and try again.",
+      ),
+    );
+  });
+
+  it('keeps the generic message for a server-side failure (500)', async () => {
+    mocks.loginAuth.mockRejectedValue({
+      status: 500,
+      data: { error: 'Internal server error' },
+    });
     renderSignIn();
 
     await fillAndSubmit();

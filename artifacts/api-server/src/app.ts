@@ -4,6 +4,7 @@ import helmet from "helmet";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { errorHandler } from "./middleware/error-handler";
 import {
   authLimiter,
   chatLimiter,
@@ -78,5 +79,16 @@ app.use("/api/auth/login", authLimiter);
 app.use("/api/auth/register", registerLimiter);
 
 app.use("/api", router);
+
+// Unmatched /api paths answer JSON rather than Express's default HTML page:
+// every client of this API parses JSON, and an HTML body used to surface in the
+// UI as a mystery "please try again".
+app.use("/api", (_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// Must stay last (BUG-013): logs the real error with the request id and answers
+// JSON, so a failure is never a heap of internals in the client's lap.
+app.use(errorHandler);
 
 export default app;

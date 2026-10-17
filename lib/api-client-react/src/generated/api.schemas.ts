@@ -5,8 +5,24 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * Database readiness, reported by `/health`.
+ */
+export type HealthStatusDatabase = typeof HealthStatusDatabase[keyof typeof HealthStatusDatabase];
+
+
+export const HealthStatusDatabase = {
+  ok: 'ok',
+  unreachable: 'unreachable',
+  'schema-missing': 'schema-missing',
+} as const;
+
 export interface HealthStatus {
   status: string;
+  /** Database readiness, reported by `/health`. */
+  database?: HealthStatusDatabase;
+  /** Safe, actionable summary when the API is degraded. */
+  message?: string;
 }
 
 export interface AuthCredentials {

@@ -75,6 +75,20 @@ export default defineConfig({
             '/api': {
               target: process.env.API_URL || 'http://localhost:8080',
               changeOrigin: true,
+              // BUG-013: when the API process is down the proxy cannot connect.
+              // Answer a classifiable JSON 503 instead of Vite's opaque error
+              // page, so the UI can say "can't reach the server" rather than
+              // reporting a server-side failure.
+              configure: (proxy) => {
+                proxy.on('error', (_error, _request, response) => {
+                  if (response.headersSent) {
+                    response.destroy();
+                    return;
+                  }
+                  response.writeHead(503, { 'content-type': 'application/json' });
+                  response.end(JSON.stringify({ error: 'The API server is not reachable.' }));
+                });
+              },
             },
           },
         }

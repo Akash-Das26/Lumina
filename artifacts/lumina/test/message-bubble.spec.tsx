@@ -118,4 +118,31 @@ describe('MessageBubble', () => {
     expect(button).toBeDisabled();
     expect(button).toHaveTextContent('Regenerating');
   });
+
+  // BUG-014: a send that failed keeps its bubble and offers a Retry control.
+  it('shows the failed state with Retry and keeps the message text', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(<MessageBubble role="user" content="never sent" failed onRetry={onRetry} />);
+
+    expect(screen.getByText('never sent')).toBeInTheDocument();
+    expect(screen.getByText('Message failed to send')).toBeInTheDocument();
+
+    await user.click(screen.getByTestId('button-retry-message'));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows no failed state for a message that went through', () => {
+    render(<MessageBubble role="user" content="delivered" />);
+
+    expect(screen.queryByTestId('message-failed')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-retry-message')).not.toBeInTheDocument();
+  });
+
+  it('renders the failed state without a Retry button when no handler is given', () => {
+    render(<MessageBubble role="user" content="never sent" failed />);
+
+    expect(screen.getByTestId('message-failed')).toBeInTheDocument();
+    expect(screen.queryByTestId('button-retry-message')).not.toBeInTheDocument();
+  });
 });

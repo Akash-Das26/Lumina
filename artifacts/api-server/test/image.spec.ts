@@ -155,13 +155,17 @@ describe("POST /openai/generate-image", () => {
     expect(insertValuesMock).not.toHaveBeenCalled();
   });
 
-  it("returns 502 and persists nothing when the provider fails", async () => {
+  // BUG-014: the provider's own message is never forwarded. An unclassified
+  // failure is a generic 500; the mapped 502/503/504 cases per provider status
+  // are covered in bug-014.spec.ts.
+  it("persists nothing and answers safe copy when the provider fails", async () => {
     generateImageBufferMock.mockRejectedValue(new Error("image provider down"));
 
     const res = await generate({ prompt: "a red fox", conversationId: 1 });
 
-    expect(res.status).toBe(502);
-    expect(JSON.parse(res.body)).toEqual({ error: "image provider down" });
+    expect(res.status).toBe(500);
+    expect(JSON.parse(res.body)).toEqual({ error: "Internal server error" });
+    expect(res.body).not.toContain("image provider down");
     expect(insertValuesMock).not.toHaveBeenCalled();
   });
 

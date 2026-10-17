@@ -29,6 +29,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /health:
+    get:
+      operationId: readinessCheck
+      tags: [health]
+      summary: Readiness check (includes database connectivity)
+      description: |
+        Reports whether the API can reach PostgreSQL and whether its schema is
+        applied. Answers 503 with an actionable message when the database is
+        unreachable or not initialized. `/healthz` stays a pure liveness probe.
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Degraded — the database is unreachable or not initialized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
   /auth/register:
     post:
       operationId: registerAuth
@@ -433,6 +456,13 @@ components:
       properties:
         status:
           type: string
+        database:
+          type: string
+          enum: [ok, unreachable, schema-missing]
+          description: Database readiness, reported by `/health`.
+        message:
+          type: string
+          description: Safe, actionable summary when the API is degraded.
       required:
         - status
 

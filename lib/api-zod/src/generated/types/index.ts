@@ -11,6 +11,7 @@ export * from './authRegisterInput';
 export * from './authUser';
 export * from './getOpenaiConversationParams';
 export * from './healthStatus';
+export * from './healthStatusDatabase';
 export * from './listOpenaiConversationsParams';
 export * from './listOpenaiMessagesParams';
 export * from './openaiConversation';

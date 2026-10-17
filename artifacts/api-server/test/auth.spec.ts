@@ -42,6 +42,20 @@ const { startTestServer } = await import("./helpers/server");
 const { default: app } = await import("../src/app");
 const { db } = await import("@workspace/db");
 const { hashPassword, verifyPassword } = await import("../src/lib/password");
+const { logger } = await import("../src/lib/logger");
+
+/**
+ * A Drizzle-like chain whose await rejects, for exercising the 500 path
+ * (BUG-013). Throwing synchronously would test something else entirely.
+ */
+function failingChain(error: unknown) {
+  const chain: Record<string, unknown> = {};
+  for (const method of ["select", "from", "where", "orderBy", "limit", "values", "set", "returning"]) {
+    chain[method] = () => chain;
+  }
+  chain.then = (_resolve: unknown, reject: (reason: unknown) => void) => reject(error);
+  return chain;
+}
 
 type TestServer = Awaited<ReturnType<typeof startTestServer>>;
 let server: TestServer;
@@ -84,13 +98,104 @@ describe("auth routes", () => {
     expect(res.status).toBe(400);
   });
 
-  it("returns 409 when the email is already registered", async () => {
+  it("answers validation failures with clean field errors, never the raw Zod issues (BUG-012)", async () => {
+    const res = await post(server, "/api/auth/register", {
+      name: "  ",
+      email: "bbjhbvb@ewfw",
+      password: "123456",
+    });
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Validation failed",
+      fieldErrors: {
+        name: ["Please enter your name"],
+        email: ["Please enter a valid email address (e.g. name@example.com)"],
+        password: ["Password must be at least 8 characters"],
+      },
+      formErrors: [],
+    });
+    // The old `parsed.error.message` payload: codes, formats and regex patterns.
+    expect(res.body).not.toMatch(/invalid_format|too_small|pattern|"code"/);
+  });
+
+  it("answers invalid login payloads with the same structured shape", async () => {
+    const res = await post(server, "/api/auth/login", { email: "nope", password: "short" });
+
+    expect(res.status).toBe(400);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "Validation failed",
+      fieldErrors: {
+        email: ["Please enter a valid email address (e.g. name@example.com)"],
+        password: ["Password must be at least 8 characters"],
+      },
+      formErrors: [],
+    });
+  });
+
+  it("returns 409 with a clear message when the email is already registered", async () => {
     const res = await post(server, "/api/auth/register", {
       name: "Test",
       email: "user@test.dev",
       password: "longenough1",
     });
     expect(res.status).toBe(409);
+    expect(JSON.parse(res.body)).toEqual({ error: "An account with this email already exists" });
+  });
+
+  it("turns a unique-constraint race into 409 rather than a 500 (BUG-013)", async () => {
+    // No existing user is found, so the insert runs — and loses the race.
+    vi.mocked(db.select).mockImplementationOnce(() => createChainMock([]) as never);
+    const duplicate = Object.assign(
+      new Error('duplicate key value violates unique constraint "users_email_unique"'),
+      { code: "23505" },
+    );
+    vi.mocked(db.insert).mockImplementation(() => failingChain(duplicate) as never);
+
+    const res = await post(server, "/api/auth/register", {
+      name: "New",
+      email: "new@test.dev",
+      password: "longenough1",
+    });
+
+    expect(res.status).toBe(409);
+    expect(JSON.parse(res.body)).toEqual({ error: "An account with this email already exists" });
+  });
+
+  it("answers an unexpected database failure with a generic JSON 500 and logs the real error (BUG-013)", async () => {
+    const failure = new Error(
+      'Failed query: select "id", "email", "name", "password_hash" from "users"\n' +
+        "connection: postgresql://lumina_user:hunter2@localhost:5432/lumina",
+    );
+    vi.mocked(db.select).mockImplementation(() => failingChain(failure) as never);
+    const errorLog = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
+
+    const res = await post(server, "/api/auth/register", {
+      name: "New",
+      email: "fresh@test.dev",
+      password: "longenough1",
+    });
+
+    expect(res.status).toBe(500);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(JSON.parse(res.body)).toEqual({ error: "Internal server error" });
+    // No stack, SQL, column names, connection string or HTML error page.
+    expect(res.body).not.toMatch(/<html|<pre|password_hash|postgresql:|Failed query|at \\w|\.ts:/);
+
+    // The real cause reaches the log, with a request id, and without secrets.
+    // (Error.message/stack are non-enumerable, so read them directly rather
+    // than through JSON.stringify.)
+    expect(errorLog).toHaveBeenCalled();
+    const [fields] = errorLog.mock.calls.at(-1) as unknown as [Record<string, unknown>, string];
+    expect(fields.reqId).toBeTruthy();
+    const logged = fields.err as Error;
+    const loggedText = `${logged.message}\n${logged.stack ?? ""}`;
+    expect(logged.message).toContain("Failed query");
+    expect(loggedText).toContain("<redacted-url>");
+    expect(loggedText).not.toContain("hunter2");
+    expect(loggedText).not.toContain("lumina_user:hunter2");
+
+    errorLog.mockRestore();
   });
 
   it("registers successfully and sets a session cookie", async () => {

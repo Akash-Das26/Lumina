@@ -83,14 +83,25 @@ function shutdown(signal = 'SIGTERM') {
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 
-for (const child of [api, web]) {
+for (const [child, name] of [
+  [api, 'API'],
+  [web, 'Vite'],
+]) {
   child.on('error', (error) => {
-    console.error('Unable to start local service:', error.message);
+    console.error(`Unable to start the ${name} service:`, error.message);
     shutdown();
   });
   child.on('exit', (code) => {
     if (!shuttingDown && code !== 0) {
-      console.error(`A local service exited with code ${code ?? 'unknown'}.`);
+      console.error(`${name} exited with code ${code ?? 'unknown'}.`);
+      // The API verifies its provider settings and the database before it
+      // listens, so an early exit here is a setup problem rather than a crash
+      // (BUG-013, BUG-014).
+      if (child === api) {
+        console.error(
+          'The API line above names the reason: fix the provider key/base URL or DATABASE_URL in .env (it is read once at startup), and run `pnpm db:push` if the schema is missing — see README → Troubleshooting local setup.',
+        );
+      }
       shutdown();
     }
   });
