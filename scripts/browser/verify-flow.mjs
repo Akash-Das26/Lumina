@@ -233,6 +233,9 @@ function check(results, webUrl) {
   };
 
   if (!/\/chat(\/|$)/.test(results.urlAfterSignUp || '')) failures.push('did not land on /chat after sign-up: ' + results.urlAfterSignUp);
+  if (!String(results.urlAfterSignUp || '').startsWith(webUrl)) {
+    failures.push(`sign-up left the local app origin: ${results.urlAfterSignUp} (expected ${webUrl})`);
+  }
   if (!/\/chat\/\d+/.test(results.urlInConversation || '')) failures.push('did not enter a conversation: ' + results.urlInConversation);
   status('/api/auth/register', 201);
   status('/api/openai/conversations', 201);

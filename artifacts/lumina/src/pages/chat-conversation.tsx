@@ -9,7 +9,7 @@ import {
   getGetOpenaiConversationQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, FileText, LogOut } from 'lucide-react';
+import { Sparkles, Menu, X, Loader2, Download, Copy, Check, ExternalLink, Search, LogOut } from 'lucide-react';
 import { ConversationList } from '@/components/conversation-list';
 import { ModeSelector } from '@/components/mode-selector';
 import { ThemeToggle } from '@/components/theme-toggle';
@@ -28,7 +28,11 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ModeKey, getModeById } from '@/lib/modes';
 import { useAuth } from '@/lib/auth-provider';
-import { CHAT_UNREACHABLE_MESSAGE, ChatSendError, streamMessage } from '@/lib/stream-message';
+import {
+  CHAT_UNREACHABLE_MESSAGE,
+  errorReachedServer,
+  streamMessage,
+} from '@/lib/stream-message';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { useSeo } from '@/lib/seo';
@@ -61,17 +65,20 @@ interface SearchSource {
 }
 
 /**
- * BUG-014: a failed search-sources fetch, carrying its status so the page can
- * tell "the API answered with a mapped error" (keep the message, offer Retry)
- * from "the API was never reached" (take the text back).
+ * BUG-014: a failed search-sources fetch, carrying the status and the parsed
+ * body so `errorReachedServer` can tell "the API answered with a mapped error"
+ * (keep the message, offer Retry) from "the API was never reached" — a proxy or
+ * gateway 5xx — where the typed text is handed back instead.
  */
 class SearchUnavailableError extends Error {
   readonly status?: number;
+  readonly data?: unknown;
 
-  constructor(message: string, status?: number) {
+  constructor(message: string, status?: number, data?: unknown) {
     super(message);
     this.name = 'SearchUnavailableError';
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -79,15 +86,13 @@ class SearchUnavailableError extends Error {
  * Copy for a failed send: the API's own mapped message when there is one (API
  * errors and `ChatSendError` both carry it), otherwise the transport message.
  * Never the provider's raw text — the server stopped forwarding it (BUG-014).
+ * A request the API never saw gets the one copy that describes it, whatever
+ * layer produced the failure.
  */
 function messageForFailure(error: unknown): string {
   const body = (error as { data?: { error?: unknown } } | null)?.data;
   if (body && typeof body.error === 'string' && body.error.trim()) return body.error;
-  // No status means the API never answered, so a browser-level message like
-  // "Failed to fetch" would be no help — say what actually happened.
-  if (typeof (error as { status?: unknown } | null)?.status !== 'number') {
-    return CHAT_UNREACHABLE_MESSAGE;
-  }
+  if (!errorReachedServer(error)) return CHAT_UNREACHABLE_MESSAGE;
   if (error instanceof Error && error.message) return error.message;
   return 'Please try again.';
 }
@@ -262,14 +267,18 @@ export default function ChatConversation() {
         if (!response.ok) {
           // The API answers JSON for every failure class; its copy is safe to
           // show (BUG-014), and only a body-less response needs a fallback.
-          let detail = 'Live search is unavailable right now.';
+          let body: unknown = null;
           try {
-            const body = (await response.json()) as { error?: unknown } | null;
-            if (typeof body?.error === 'string' && body.error) detail = body.error;
+            body = await response.json();
           } catch {
-            // Keep the fallback copy.
+            // Not JSON: a proxy or gateway produced this response.
           }
-          throw new SearchUnavailableError(detail, response.status);
+          const contractMessage = (body as { error?: unknown } | null)?.error;
+          const detail =
+            typeof contractMessage === 'string' && contractMessage
+              ? contractMessage
+              : 'Live search is unavailable right now.';
+          throw new SearchUnavailableError(detail, response.status, body);
         }
         const result = (await response.json()) as { sources: SearchSource[] };
         setSources(result.sources || []);
@@ -334,7 +343,7 @@ export default function ChatConversation() {
    * the composer.
    */
   const failSend = (content: string, mode: ModeKey, error: unknown, title: string): boolean => {
-    const reachedServer = typeof (error as { status?: unknown } | null)?.status === 'number';
+    const reachedServer = errorReachedServer(error);
     toast({
       title,
       description: messageForFailure(error),

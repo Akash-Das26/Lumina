@@ -115,7 +115,7 @@ beforeEach(() => {
  * SSE response). Resolves once the socket is destroyed.
  */
 function postMessageAndDestroy(server: TestServer, body: unknown): Promise<void> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const req = http.request(
       `${server.url}/api/openai/conversations/1/messages`,
       {

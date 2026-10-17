@@ -13,7 +13,7 @@ process.env.OPENAI_API_KEY ??= "test-key";
 process.env.AI_INTEGRATIONS_OPENAI_BASE_URL ??= "http://127.0.0.1:9";
 process.env.SESSION_SECRET ??= "test-session-secret-0123456789abcdef";
 
-const { createChainMock, generateImageBufferMock, insertValuesMock, updateSetMock, deleteWhereMock, insertIdRef } =
+const { createChainMock, generateImageBufferMock, insertValuesMock, updateSetMock, insertIdRef } =
   vi.hoisted(() => {
     const generateImageBufferMock = vi.fn();
     const insertValuesMock = vi.fn();

@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import ChatConversation from '@/pages/chat-conversation';
-import { CHAT_UNREACHABLE_MESSAGE, ChatSendError, streamMessage } from '@/lib/stream-message';
+import { CHAT_UNREACHABLE_MESSAGE, ChatSendError } from '@/lib/stream-message';
 
 // BUG-014: a failed send keeps the user's message with an inline "Message failed
 // to send" state and a Retry control, shows the API's mapped copy in the toast
@@ -12,6 +12,7 @@ import { CHAT_UNREACHABLE_MESSAGE, ChatSendError, streamMessage } from '@/lib/st
 const mocks = vi.hoisted(() => ({
   toast: vi.fn(),
   streamMessage: vi.fn(),
+  generateImage: vi.fn(),
 }));
 
 vi.mock('@/lib/stream-message', async (importOriginal) => ({
@@ -40,7 +41,11 @@ vi.mock('@workspace/api-client-react', () => ({
   useGetOpenaiConversation: () => ({ data: conversation.data, isLoading: false }),
   getOpenaiConversation: vi.fn(),
   useCreateOpenaiConversation: () => ({ mutate: vi.fn() }),
-  useGenerateOpenaiImage: () => ({ mutate: vi.fn(), mutateAsync: vi.fn(), isPending: false }),
+  useGenerateOpenaiImage: () => ({
+    mutate: vi.fn(),
+    mutateAsync: mocks.generateImage,
+    isPending: false,
+  }),
   getListOpenaiConversationsQueryKey: () => ['conversations'],
   getGetOpenaiConversationQueryKey: (id: number) => ['conversation', id],
 }));
@@ -100,6 +105,7 @@ async function send(text: string) {
 beforeEach(() => {
   mocks.toast.mockReset();
   mocks.streamMessage.mockReset();
+  mocks.generateImage.mockReset();
   conversation.data.messages = [];
   conversation.data.nextCursor = null;
   conversation.data.mode = 'chat';
@@ -198,6 +204,73 @@ describe('failed message state (BUG-014)', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it('shows the API copy when the provider is temporarily unavailable (5xx)', async () => {
+    const mapped = 'The AI service is temporarily unavailable. Please try again.';
+    mocks.streamMessage.mockImplementation(
+      async (_id, _content, _mode, _onChunk, _onDone, onError: (e: Error) => void) => {
+        onError(new ChatSendError(mapped, 502, true));
+      },
+    );
+
+    renderPage();
+    await send('is the provider up?');
+
+    expect(mocks.toast).toHaveBeenCalledWith({
+      title: 'Message failed',
+      description: mapped,
+      variant: 'destructive',
+    });
+    // The API answered, so the message is persisted and stays with Retry.
+    expect(await screen.findByTestId('message-failed')).toBeInTheDocument();
+    expect(screen.getByTestId('button-retry-message')).toBeInTheDocument();
+  });
+
+  it('keeps the typed text when a gateway answered instead of the API', async () => {
+    mocks.streamMessage.mockImplementation(
+      async (_id, _content, _mode, _onChunk, _onDone, onError: (e: Error) => void) => {
+        // The dev proxy marks its own response with code "api-unreachable".
+        onError(new ChatSendError(CHAT_UNREACHABLE_MESSAGE, 503, false));
+      },
+    );
+
+    renderPage();
+    await send('typed while the api was down');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('input-chat-message')).toHaveValue('typed while the api was down'),
+    );
+    expect(screen.queryByTestId('message-failed')).not.toBeInTheDocument();
+    expect(mocks.toast).toHaveBeenCalledWith({
+      title: 'Message failed',
+      description: CHAT_UNREACHABLE_MESSAGE,
+      variant: 'destructive',
+    });
+  });
+
+  it('keeps the typed text when an Artist request never reached the API', async () => {
+    conversation.data.mode = 'artist';
+    // API-client error shape: status plus the parsed body (see customFetch).
+    mocks.generateImage.mockRejectedValue(
+      Object.assign(new Error('HTTP 503 Service Unavailable'), {
+        status: 503,
+        data: { error: 'The API server is not reachable.', code: 'api-unreachable' },
+      }),
+    );
+
+    renderPage();
+    await send('a calm blue rectangle');
+
+    await waitFor(() =>
+      expect(screen.getByTestId('input-chat-message')).toHaveValue('a calm blue rectangle'),
+    );
+    expect(screen.queryByTestId('message-failed')).not.toBeInTheDocument();
+    expect(mocks.toast).toHaveBeenCalledWith({
+      title: 'Image generation failed',
+      description: 'The API server is not reachable.',
+      variant: 'destructive',
+    });
   });
 
   it('keeps the typed text when the send never reached the API', async () => {

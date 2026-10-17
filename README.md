@@ -176,11 +176,12 @@ In the chat, a message that failed this way stays in the transcript with **Messa
 
 ```bash
 pnpm run typecheck
+pnpm lint
 pnpm test
 pnpm audit
 pnpm run build
 ```
 
-`pnpm run build` typechecks and builds every package; it defaults `PORT` and `BASE_PATH` for the web builds (see `scripts/build.mjs`), so no variables need to be exported first. Set either explicitly to override, e.g. `BASE_PATH=/app pnpm run build`. `pnpm test` runs the unit and component suites across the workspace (the API tests mock the database and need no Postgres; the env-gated integration suite is skipped unless `E2E_DATABASE_URL` is set). `pnpm audit` must report **no known vulnerabilities** — the workspace pins patched transitive versions with `overrides` in `pnpm-workspace.yaml`, so a new advisory there should be remediated there rather than ignored. CI runs the typecheck, the test suite, and the browser harnesses.
+`pnpm run build` typechecks and builds every package; it defaults `PORT` and `BASE_PATH` for the web builds (see `scripts/build.mjs`), so no variables need to be exported first. Set either explicitly to override, e.g. `BASE_PATH=/app pnpm run build`. `pnpm test` runs the unit and component suites across the workspace (the API tests mock the database and need no Postgres; the env-gated integration suite is skipped unless `E2E_DATABASE_URL` is set). `pnpm audit` must report **no known vulnerabilities** — the workspace pins patched transitive versions with `overrides` in `pnpm-workspace.yaml`, so a new advisory there should be remediated there rather than ignored. `pnpm lint` runs ESLint (recommended + TypeScript + React hooks) over the workspace through the flat config in `eslint.config.mjs`; it exits 0 today and must stay that way. CI runs the lint, the typecheck, the test suite (with `E2E_DATABASE_URL` pointing at a PostgreSQL service, so the 4 env-gated integration tests run on every PR), and the browser harnesses.
 
 Actual AI responses and saved conversations require a reachable PostgreSQL database and a valid provider key. Keep those values in `.env`, not in source control.

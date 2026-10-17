@@ -1,5 +1,5 @@
 import { Link } from 'wouter';
-import { ArrowRight, Zap, Shield, Sparkles, Globe, PenLine, Languages, MessageSquare, ChevronDown, Search, FileText, Download, ExternalLink } from 'lucide-react';
+import { ArrowRight, Zap, Shield, Sparkles, Globe, PenLine, MessageSquare, ChevronDown, Search, FileText, Download, ExternalLink } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { MODES } from '@/lib/modes';

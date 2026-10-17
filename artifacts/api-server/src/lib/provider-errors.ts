@@ -19,13 +19,19 @@ import type { Response } from "express";
 import { logger } from "./logger";
 import { errorMessage, redactSecrets, toLoggableError } from "./safe-error";
 
-export type ProviderErrorKind = "auth" | "rate-limit" | "unavailable" | "unknown";
+export type ProviderErrorKind =
+  | "auth"
+  | "rate-limit"
+  | "unavailable"
+  | "upstream"
+  | "unknown";
 
 /** Client copy per class — fixed strings, never provider text. */
 export const PROVIDER_ERROR_MESSAGES: Record<ProviderErrorKind, string> = {
   auth: "The AI service is not configured correctly. Please contact the administrator.",
   "rate-limit": "The AI service is busy or over quota. Please try again later.",
   unavailable: "The AI service did not respond. Please try again.",
+  upstream: "The AI service is temporarily unavailable. Please try again.",
   unknown: "Internal server error",
 };
 
@@ -34,6 +40,7 @@ const STATUS_BY_KIND: Record<ProviderErrorKind, number> = {
   auth: 502,
   "rate-limit": 503,
   unavailable: 504,
+  upstream: 502,
   unknown: 500,
 };
 
@@ -130,8 +137,14 @@ export type MappedProviderError = {
  *
  * `auth` (401/403 → 502) and `rate-limit` (429 → 503) are the two the provider
  * reports unambiguously; timeouts and connection failures become `unavailable`
- * (504) because the query may succeed on a second attempt; everything else —
- * including a provider-side 5xx — is `unknown` (500).
+ * (504) because the query may succeed on a second attempt; a provider-side 5xx
+ * is `upstream` (502 — the provider is briefly down, so a retry is the right
+ * advice and the caller's request was not at fault); everything else is
+ * `unknown` (500).
+ *
+ * Provider 408/504 are checked before the generic 5xx branch on purpose: those
+ * statuses *are* timeouts, and "the AI service did not respond" describes them
+ * better than "temporarily unavailable".
  */
 export function mapProviderError(error: unknown): MappedProviderError {
   const status = providerStatus(error);
@@ -144,6 +157,8 @@ export function mapProviderError(error: unknown): MappedProviderError {
     kind = "rate-limit";
   } else if (isNetworkFailure(error, status)) {
     kind = "unavailable";
+  } else if (status !== null && status >= 500) {
+    kind = "upstream";
   } else {
     kind = "unknown";
   }

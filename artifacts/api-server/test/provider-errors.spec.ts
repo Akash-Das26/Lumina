@@ -53,11 +53,37 @@ describe("mapProviderError", () => {
     }
   });
 
+  it.each([500, 501, 502, 503, 505, 599])(
+    "maps a provider %i to 502 'temporarily unavailable'",
+    (status) => {
+      const mapped = mapProviderError(
+        apiError(status, "upstream provider failed: internal detail"),
+      );
+
+      expect(mapped.kind).toBe("upstream");
+      expect(mapped.status).toBe(502);
+      expect(mapped.message).toBe("The AI service is temporarily unavailable. Please try again.");
+      // The real status stays available for the log.
+      expect(mapped.providerStatus).toBe(status);
+      expect(mapped.message).not.toContain("internal detail");
+    },
+  );
+
+  it("keeps provider 504/408 in the timeout class, not the generic 5xx one", () => {
+    // Both are timeouts, and "did not respond" describes them better.
+    for (const status of [504, 408]) {
+      const mapped = mapProviderError(apiError(status, "gateway timeout"));
+      expect(mapped.kind).toBe("unavailable");
+      expect(mapped.status).toBe(504);
+      expect(mapped.message).toBe("The AI service did not respond. Please try again.");
+    }
+  });
+
   it("maps anything else to a generic 500", () => {
     for (const error of [
       new Error("boom"),
-      apiError(500, "Internal server error"),
       apiError(400, "Bad request"),
+      apiError(404, "No such model"),
       "not an error object",
     ]) {
       const mapped = mapProviderError(error);
@@ -65,6 +91,24 @@ describe("mapProviderError", () => {
       expect(mapped.status).toBe(500);
       expect(mapped.message).toBe("Internal server error");
     }
+  });
+
+  it("logs a provider 5xx with its real status and redacted message", () => {
+    const errorLog = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
+    const key = "sk-proj-5xxsecretvalue123456";
+
+    const mapped = logProviderError(
+      apiError(503, `upstream unavailable while key ${key} was in use`, "upstream_error"),
+      { reqId: "req-503", route: "chat" },
+    );
+
+    expect(mapped.status).toBe(502);
+    expect(mapped.message).toBe("The AI service is temporarily unavailable. Please try again.");
+    const [record] = errorLog.mock.calls[0] as unknown as [Record<string, unknown>];
+    expect(record).toMatchObject({ providerStatus: 503, providerCode: "upstream_error", reqId: "req-503" });
+    expect(String(record.providerMessage)).toContain("upstream unavailable");
+    expect(JSON.stringify(record)).not.toContain(key);
+    errorLog.mockRestore();
   });
 
   it("looks through wrapper errors for the provider status", () => {
@@ -82,6 +126,7 @@ describe("mapProviderError", () => {
     for (const error of [
       apiError(401, providerText),
       apiError(429, providerText),
+      apiError(503, providerText),
       Object.assign(new Error(providerText), { code: "ETIMEDOUT" }),
       new Error(providerText),
     ]) {

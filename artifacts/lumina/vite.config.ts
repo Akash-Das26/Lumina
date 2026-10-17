@@ -79,6 +79,9 @@ export default defineConfig({
               // Answer a classifiable JSON 503 instead of Vite's opaque error
               // page, so the UI can say "can't reach the server" rather than
               // reporting a server-side failure.
+              // BUG-014: the `code` marks the response as *not* coming from the
+              // API, so the client knows the request was never handled and can
+              // keep the user's unsent text instead of blaming the message.
               configure: (proxy) => {
                 proxy.on('error', (_error, _request, response) => {
                   if (response.headersSent) {
@@ -86,7 +89,12 @@ export default defineConfig({
                     return;
                   }
                   response.writeHead(503, { 'content-type': 'application/json' });
-                  response.end(JSON.stringify({ error: 'The API server is not reachable.' }));
+                  response.end(
+                    JSON.stringify({
+                      error: 'The API server is not reachable.',
+                      code: 'api-unreachable',
+                    }),
+                  );
                 });
               },
             },
