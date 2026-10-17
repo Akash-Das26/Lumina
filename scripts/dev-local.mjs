@@ -99,7 +99,7 @@ for (const [child, name] of [
       // (BUG-013, BUG-014).
       if (child === api) {
         console.error(
-          'The API line above names the reason: fix the provider key/base URL or DATABASE_URL in .env (it is read once at startup), and run `pnpm db:push` if the schema is missing — see README → Troubleshooting local setup.',
+          'The API line above names the reason: fix the provider key/base URL or DATABASE_URL in .env (it is read once at startup), run `pnpm check:provider` to test the provider config on its own, and run `pnpm db:push` if the schema is missing — see README → Troubleshooting local setup.',
         );
       }
       shutdown();

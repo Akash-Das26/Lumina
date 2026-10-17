@@ -313,18 +313,18 @@ export default function ChatConversation() {
           return [...updated];
         });
       },
-      () => {
+      async () => {
         setIsStreamingActive(false);
-        setTempMessages((prev) => {
-          const updated = [...prev];
-          const lastMsg = updated[updated.length - 1];
-          if (lastMsg?.role === 'assistant') {
-            lastMsg.isStreaming = false;
-          }
-          return updated;
-        });
-        queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) });
-        queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() });
+        // Wait for the refetch so the conversation already carries the
+        // persisted messages before we clear the optimistic pair — otherwise
+        // there would be a flash where the chat looks empty.
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: getGetOpenaiConversationQueryKey(id) }),
+          queryClient.invalidateQueries({ queryKey: getListOpenaiConversationsQueryKey() }),
+        ]);
+        // Drop the optimistic bubbles now that the persisted copies are in
+        // the refetched conversation (mirrors the artist-mode pattern, line 252).
+        setTempMessages([]);
       },
       (error) => {
         keepText = failSend(content, mode, error, 'Message failed');
@@ -447,7 +447,10 @@ export default function ChatConversation() {
           setRegeneratingId(null);
           toast({
             title: 'Image generation failed',
-            description: error instanceof Error ? error.message : 'Unknown error',
+            // The API's own mapped copy when there is one (e.g. "Image
+            // generation is not available with the current AI provider.",
+            // BUG-021) instead of an "HTTP 501 …: <copy>" wrapper.
+            description: messageForFailure(error),
             variant: 'destructive',
           });
         },

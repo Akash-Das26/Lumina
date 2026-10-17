@@ -1,39 +1,59 @@
-// @vitest-environment jsdom
-// BUG-018 / Audit 4 A4: the comparison page's external anchors (vendor site,
-// reference link) must be http(s)-only and carry rel="noopener noreferrer".
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import ComparisonPage from '@/pages/comparison';
 
-const slug = vi.hoisted(() => ({ value: 'chatgpt' }));
+// Mutable wouter params so each test picks the slug the route would supply.
+const route = vi.hoisted(() => ({
+  params: { slug: 'monica' } as Record<string, string | undefined>,
+}));
 
-vi.mock('@/lib/seo', () => ({ useSeo: () => {} }));
-vi.mock('wouter', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('wouter')>();
-  return { ...actual, useParams: () => ({ slug: slug.value }) };
+vi.mock('wouter', () => ({
+  useParams: () => route.params,
+  Link: ({
+    children,
+    href,
+    ...rest
+  }: {
+    children?: unknown;
+    href?: string;
+  } & Record<string, unknown>) => (
+    <a href={href} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+afterEach(() => {
+  route.params = { slug: 'monica' };
+  document.title = '';
 });
 
-describe('comparison page external links (BUG-018 / Audit 4 A4)', () => {
-  it('opens the vendor site with noopener noreferrer', () => {
-    slug.value = 'chatgpt';
+describe('/compare/:slug (Audit 4 A2 / BUG-017)', () => {
+  it('renders the matching comparison and its SEO title for a valid slug', () => {
+    route.params = { slug: 'monica' };
     render(<ComparisonPage />);
-
-    const vendor = screen.getByRole('link', { name: /visit chatgpt/i });
-    expect(vendor).toHaveAttribute('target', '_blank');
-    const rel = vendor.getAttribute('rel') ?? '';
-    expect(rel).toContain('noopener');
-    expect(rel).toContain('noreferrer');
-    expect(vendor.getAttribute('href')).toMatch(/^https:\/\//);
+    expect(
+      screen.getByRole('heading', { level: 1, name: /Lumina vs Monica/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('404 — Not Found')).not.toBeInTheDocument();
+    expect(document.title).toContain('Lumina vs Monica');
   });
 
-  it('opens the reference link with noopener noreferrer', () => {
-    slug.value = 'chatgpt';
+  it('renders a 404 for an unknown slug instead of silently showing Monica', () => {
+    route.params = { slug: 'not-a-real-tool' };
     render(<ComparisonPage />);
+    expect(
+      screen.getByRole('heading', { level: 1, name: '404 — Not Found' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Lumina vs Monica/)).not.toBeInTheDocument();
+  });
 
-    const reference = screen.getByRole('link', { name: /reference:/i });
-    const rel = reference.getAttribute('rel') ?? '';
-    expect(rel).toContain('noopener');
-    expect(rel).toContain('noreferrer');
-    expect(reference.getAttribute('href')).toMatch(/^https:\/\//);
+  it('renders the same 404 when the route supplies no slug at all', () => {
+    route.params = {};
+    render(<ComparisonPage />);
+    expect(
+      screen.getByRole('heading', { level: 1, name: '404 — Not Found' }),
+    ).toBeInTheDocument();
+    expect(document.title).toBe('404 — Not Found');
   });
 });

@@ -62,7 +62,7 @@ cp .env.example .env
 
 Set `DATABASE_URL`, `OPENAI_API_KEY`, `AI_INTEGRATIONS_OPENAI_BASE_URL`, and `SESSION_SECRET` in `.env` (generate a session secret with `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`).
 
-**One provider key covers every AI feature.** Chat, Search, Write and Translate call the provider's chat-completions API; Artist calls its images API. Get an OpenAI key from <https://platform.openai.com/account/api-keys> (any OpenAI-compatible provider works — set its key page's key and its base URL). The server reads `.env` **once at startup**, so restart `pnpm dev` after editing it. An empty key or the placeholder from `.env.example` (`replace-with-your-key`) is treated as *not configured* and the API exits before listening, naming the variable — it will not start a server that fails on your first message.
+**One provider key covers every AI feature.** Chat, Search, Write and Translate call the provider's chat-completions API; Artist calls its images API. Get an OpenAI key from <https://platform.openai.com/account/api-keys> (any OpenAI-compatible provider works — set its key page's key and its base URL; see **Choosing an AI provider** below). The server reads `.env` **once at startup**, so restart `pnpm dev` after editing it. An empty key or the placeholder from `.env.example` (`replace-with-your-key`) is treated as *not configured* and the API exits before listening, naming the variable — it will not start a server that fails on your first message. The same startup check refuses a key that does not match the configured provider (e.g. a Google-style key while the base URL still points at OpenAI).
 
 Then initialize the schema:
 
@@ -103,6 +103,60 @@ If a port is already in use:
 API_PORT=19080 WEB_PORT=19173 pnpm dev
 ```
 
+## Choosing an AI provider
+
+One provider credential covers every AI feature, through **three settings that must agree**: the key, the base URL, and the per-feature model names.
+
+| Variable | Required | Default | Used by |
+| --- | --- | --- | --- |
+| `OPENAI_API_KEY` | yes | — | every AI feature (alias: `AI_INTEGRATIONS_OPENAI_API_KEY`) |
+| `AI_INTEGRATIONS_OPENAI_BASE_URL` or `OPENAI_BASE_URL` | yes | — | every AI feature |
+| `OPENAI_CHAT_MODEL` | no | `openai/gpt-oss-120b` | Chat, Search, Write, Translate |
+| `OPENAI_IMAGE_MODEL` | no | `gpt-image-1` | Artist (image generation) |
+
+The server reads `.env` once at startup; restart after editing it.
+
+**Example 1 — OpenAI (the default)**
+
+```bash
+OPENAI_API_KEY=sk-your-openai-key
+AI_INTEGRATIONS_OPENAI_BASE_URL=https://api.openai.com/v1
+# Model names are account-specific; set yours if the default is not available to you:
+# OPENAI_CHAT_MODEL=
+# OPENAI_IMAGE_MODEL=
+```
+
+When the base URL is OpenAI's (or unset — unset means the SDK default, OpenAI), the key **must start with `sk-`**; anything else is refused at startup with a message naming the variable and pointing at this section, never echoing the value. Both this example and Example 2 are enforced by the config unit tests (`provider-config.spec.ts`); the examples have **not** been exercised against the live APIs from this repository (no live keys are used here).
+
+**Example 2 — Google Gemini through its OpenAI-compatible endpoint**
+
+```bash
+OPENAI_API_KEY=AIza-your-ai-studio-key
+AI_INTEGRATIONS_OPENAI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
+# OPENAI_CHAT_MODEL=<a Gemini chat-model id served by that endpoint>
+```
+
+Google AI Studio keys usually start with **`AIza`**. With any base URL other than OpenAI's there is **no prefix rule** — every provider has its own key format, so only the empty/placeholder checks apply. **Vertex AI uses different keys and endpoints** than AI Studio; this example covers the AI Studio `generativelanguage` path only.
+
+**Feature compatibility (honest status)**
+
+| Provider (base URL) | Chat / Search / Write / Translate | Artist (images) |
+| --- | --- | --- |
+| OpenAI `api.openai.com/v1` | expected to work — **untested** here (no live key) | expected to work — **untested** here |
+| Google `generativelanguage.googleapis.com/v1beta/openai/` | **untested** here | **not available**: this app refuses Artist up front and answers "Image generation is not available with the current AI provider." — Google's OpenAI-compatible endpoint serves chat completions only (per Google's docs; not re-verified live here). Chat and the other tabs are unaffected. |
+| Groq `api.groq.com/openai/v1` | the model list for this project was verified live against Groq earlier (see `.agents/memory/groq-openai-compat.md`); untested from this session | **untested**: if the endpoint answers 404/405/501 for images, Artist returns the friendly message above at call time |
+| Anything else | **untested** | **untested** — discovered at call time via the same 404/405/501 rule |
+
+Everything marked *untested* means exactly that: no live provider call was made from this repository to verify it. What **is** verified here (unit/integration tests against the local stub): the startup rules above for both examples, the capability gate, the 404/405/501 mapping, and all provider-failure copy.
+
+**First step when chat fails: `pnpm check:provider`**
+
+```bash
+pnpm check:provider
+```
+
+An opt-in script (`scripts/check-provider.mjs`) that reads the same configuration the API reads and makes **one small authenticated request** — `GET {base}/models` — then reports pass/fail with the HTTP status (and a redacted response snippet on failure). It exits **non-zero on failure**, **never prints the key** (on any path), and is **never run at startup or in CI**. It needs no database and no running app. See the troubleshooting table below for how to read the result.
+
 ## Troubleshooting local setup
 
 **The UI says "Unable to create your account. Please try again." or "Can't reach the server."**
@@ -116,6 +170,20 @@ curl -s localhost:8080/api/health   # is the API up, and can it reach the databa
 - `curl: command not found` / connection refused → the API is not running: check the `pnpm dev` terminal, or start it with `pnpm --filter @workspace/api-server run dev`.
 - `"database":"unreachable"` → PostgreSQL is not running, or `DATABASE_URL` in `.env` has the wrong host, port, user or password (see below).
 - `"database":"schema-missing"` → the database is reachable but empty: run `pnpm db:push`.
+
+**The chat toast says "The AI service is not configured correctly. Please contact the administrator."**
+
+The provider rejected the key (401/403). Test the configuration on its own first — no app or database needed:
+
+```bash
+pnpm check:provider
+```
+
+- Exit 0 + `OK … HTTP 200` → the key and base URL work together; look at the model variables (chat failures against a working provider are usually a wrong `OPENAI_CHAT_MODEL`).
+- Non-zero → the host and HTTP status are printed (401 means this key was rejected by this base URL — the classic wrong-provider-key setup). The script never prints the key.
+- A wrong-provider key is normally caught even earlier, at startup: with OpenAI's base URL (or unset), `OPENAI_API_KEY` must start with `sk-` — a Google (`AIza`/`AQ.`), Groq (`gsk_`) or Anthropic (`sk-ant-`) key stops the server with a message pointing at README → "Choosing an AI provider". No part of the key value is ever printed or logged.
+- In the API log, the `provider request failed` line for a provider 401/403 carries `providerHost`, `keyHint` (the **fixed prefix class only**, e.g. `key starts with sk-` — never the key), `model`, and `hint` (this table).
+- Artist only: "Image generation is not available with the current AI provider." means the configured provider has no images endpoint — chat and the other tabs keep working. See the compatibility table above.
 
 Every 500 is also logged by the API itself, as one JSON line at `error` level with the request id, the request and the real error (including the stack). The client is never sent the stack, SQL text or connection details — that is what the banner hides, and the log line is where it lives.
 

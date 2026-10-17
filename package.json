@@ -13,6 +13,7 @@
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "test": "pnpm -r --if-present run test",
     "lint": "eslint .",
+    "check:provider": "node ./scripts/check-provider.mjs",
     "verify:lightbox": "node scripts/browser/verify-lightbox.mjs",
     "verify:flow": "node scripts/browser/verify-flow.mjs"
   },
