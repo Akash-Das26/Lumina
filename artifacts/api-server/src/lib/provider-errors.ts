@@ -17,6 +17,13 @@
 
 import type { Response } from "express";
 import { logger } from "./logger";
+import {
+  chatModel,
+  configuredApiKey,
+  imageModel,
+  keyPrefixClass,
+  providerHost,
+} from "./provider-config";
 import { errorMessage, redactSecrets, toLoggableError } from "./safe-error";
 
 export type ProviderErrorKind =
@@ -190,6 +197,19 @@ export function logProviderError(
   context: ProviderErrorContext,
 ): MappedProviderError {
   const mapped = mapProviderError(error);
+  // BUG-021: a provider 401/403 is almost always "wrong key for this base
+  // URL" — the operator needs three facts to spot it, all of them safe: the
+  // host being called, the key's *fixed prefix class* (never any other part of
+  // the value) and the configured model, plus a pointer to the README table.
+  const authDiagnostics =
+    mapped.kind === "auth"
+      ? {
+          providerHost: providerHost(),
+          keyHint: keyPrefixClass(configuredApiKey()),
+          model: context.route === "image" ? imageModel() : chatModel(),
+          hint: "See README → Troubleshooting local setup",
+        }
+      : {};
   logger.error(
     {
       reqId: context.reqId,
@@ -201,6 +221,7 @@ export function logProviderError(
       providerCode: mapped.providerCode,
       providerMessage: redactSecrets(errorMessage(error)),
       err: toLoggableError(error),
+      ...authDiagnostics,
     },
     "provider request failed",
   );

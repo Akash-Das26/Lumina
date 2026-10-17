@@ -100,6 +100,27 @@ describe("auth rate limiting", () => {
     expect(JSON.parse(lastBody)).toMatchObject({ error: expect.stringContaining("Too many") });
   });
 
+  it("does not let one email's failures lock a different email out of a shared IP", async () => {
+    // user@test.dev's failed-login bucket is already exhausted by the test
+    // above; a different address from the same IP must still reach the
+    // credential check (they only share the socket address, not the bucket).
+    mockExistingUser("scrypt:ab:cd");
+    const res = await post("/api/auth/login", {
+      email: "other@test.dev",
+      password: "wrongpassword",
+    });
+    expect(res.status).toBe(401);
+  });
+
+  it("keys failed logins case-insensitively (the route normalizes the email)", async () => {
+    // Same account as the exhausted bucket, different case: one bucket, not two.
+    const res = await post("/api/auth/login", {
+      email: " USER@TEST.DEV ",
+      password: "wrongpassword",
+    });
+    expect(res.status).toBe(429);
+  });
+
   it("returns 429 after too many registrations", async () => {
     vi.mocked(db.select).mockImplementation(() => createChainMock([]) as never);
     vi.mocked(db.insert).mockImplementation(

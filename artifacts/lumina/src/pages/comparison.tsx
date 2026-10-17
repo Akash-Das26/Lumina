@@ -14,20 +14,62 @@ function BrandMark({ competitor = false }: { competitor?: boolean }) {
 }
 
 export default function ComparisonPage() {
-  const { slug = 'monica' } = useParams();
-  const comparison = getComparison(slug) || comparisons[comparisons.length - 1];
-  const title = `Lumina vs ${comparison.name}: features, pricing, and which is better in 2026`;
-  const description = `Compare Lumina and ${comparison.name} on features, pricing, free access, speed, accuracy, ease of use, and workflow fit. See which AI assistant is right for you.`;
-  const path = `/compare/${comparison.slug}`;
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@graph': [
-      { '@type': 'Product', name: 'Lumina AI', description: 'A focused AI command center with chat, search, writing, artist, translation, document context, and exports.', brand: { '@type': 'Brand', name: 'Lumina' }, offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' } },
-      { '@type': 'FAQPage', mainEntity: comparison.faqs.map((faq) => ({ '@type': 'Question', name: faq.question, acceptedAnswer: { '@type': 'Answer', text: faq.answer } })) },
-      { '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Lumina', item: '/' }, { '@type': 'ListItem', position: 2, name: 'Compare', item: '/compare' }, { '@type': 'ListItem', position: 3, name: `Lumina vs ${comparison.name}`, item: path }] },
-    ],
-  };
-  useSeo({ title, description, path, jsonLd });
+  const { slug } = useParams();
+  // Compute SEO data (needed so useSeo is called in the same order on every render).
+  // Handle optional slug: if missing, comparison is undefined → 404.
+  const comparison = slug ? getComparison(slug) : undefined;
+  const hasComparison = !!comparison;
+  const comparisonTitle = hasComparison
+    ? `Lumina vs ${comparison.name}: features, pricing, and which is better in 2026`
+    : '404 — Not Found';
+  const comparisonDescription = hasComparison
+    ? `Compare Lumina and ${comparison.name} on features, pricing, free access, speed, accuracy, ease of use, and workflow fit. See which AI assistant is right for you.`
+    : 'No comparison found for that slug.';
+  const comparisonPath = hasComparison ? `/compare/${comparison.slug}` : '/compare';
+  const jsonLd = hasComparison
+    ? {
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'Product', name: 'Lumina AI', description: 'A focused AI command center with chat, search, writing, artist, translation, document context, and exports.', brand: { '@type': 'Brand', name: 'Lumina' }, offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' } },
+          { '@type': 'FAQPage', mainEntity: comparison.faqs.map((faq) => ({ '@type': 'Question', name: faq.question, acceptedAnswer: { '@type': 'Answer', text: faq.answer } })) },
+          { '@type': 'BreadcrumbList', itemListElement: [{ '@type': 'ListItem', position: 1, name: 'Lumina', item: '/' }, { '@type': 'ListItem', position: 2, name: 'Compare', item: '/compare' }, { '@type': 'ListItem', position: 3, name: `Lumina vs ${comparison.name}`, item: comparisonPath }] },
+        ],
+      }
+    : {
+        '@context': 'https://schema.org',
+        '@graph': [
+          { '@type': 'Product', name: 'Lumina AI', description: 'A focused AI command center with chat, search, writing, artist, translation, document context, and exports.', brand: { '@type': 'Brand', name: 'Lumina' }, offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' } },
+        ],
+      };
+  // Always call useSeo first (React Hooks rule: must be called in the same order on every render).
+  useSeo({ title: comparisonTitle, description: comparisonDescription, path: comparisonPath, jsonLd });
+
+  // Render the comparison page or a 404 not-found page (BUG-019, Audit 4 A2 / Audit 5 F-02).
+  if (!hasComparison) {
+    return (
+      <div className="min-h-[100dvh] bg-background text-foreground">
+        <header className="border-b border-border/60 bg-background/85 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+            <Link href="/" className="flex items-center gap-2 font-bold"><BrandMark /><span>Lumina</span></Link>
+            <nav>
+              <Link href="/compare" className="hidden text-sm text-muted-foreground hover:text-foreground sm:block">All comparisons</Link>
+              <Link href="/chat"><Button size="sm">Try Lumina <ArrowRight className="ml-2 h-3.5 w-3.5" /></Button></Link>
+            </nav>
+          </div>
+        </header>
+        <main className="min-h-screen flex items-center justify-center">
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-destructive">404 — Not Found</h1>
+            <p className="mt-6 text-lg text-muted-foreground">No comparison found for that slug.</p>
+            <div className="mt-8">
+              <Link href="/compare" className="btn btn-primary">Back to comparisons</Link>
+              <Link href="/chat" className="mt-4 btn">Try Lumina</Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[100dvh] bg-background text-foreground">

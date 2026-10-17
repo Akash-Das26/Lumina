@@ -4,7 +4,22 @@
 // placeholder, valid-looking — plus the rule that the offending value is never
 // echoed back in the message.
 import { describe, expect, it } from "vitest";
-import { isPlaceholderValue, readProviderConfig } from "../src/lib/provider-config";
+import {
+  DEFAULT_CHAT_MODEL,
+  DEFAULT_IMAGE_MODEL,
+  DEFAULT_OPENAI_BASE_URL,
+  FOREIGN_PROVIDER_PREFIXES,
+  IMAGE_GENERATION_UNAVAILABLE_MESSAGE,
+  chatModel,
+  imageModel,
+  isForeignProviderKey,
+  isPlaceholderValue,
+  keyPrefixClass,
+  looksLikeOpenaiKey,
+  providerHost,
+  providerSupportsImages,
+  readProviderConfig,
+} from "../src/lib/provider-config";
 
 const BASE_URL = "https://api.openai.com/v1";
 
@@ -174,5 +189,217 @@ describe("readProviderConfig", () => {
 
     expect(config.ok).toBe(false);
     if (!config.ok) expect(config.variable).toBe("AI_INTEGRATIONS_OPENAI_BASE_URL");
+  });
+});
+
+describe("key-shape check keyed to the base URL (BUG-021)", () => {
+  const GOOGLE_COMPAT_BASE =
+    "https://generativelanguage.googleapis.com/v1beta/openai/";
+  const GROQ_BASE = "https://api.groq.com/openai/v1";
+
+  /** Sentinel tail: any of it appearing in an output would leak key material. */
+  const SENTINEL = "FakeKeySentinel0123456789";
+  const FOREIGN_KEYS: Array<[label: string, value: string]> = [
+    ["a Google/\"AQ.\" key", `AQ.${SENTINEL}`],
+    ["a Google AI Studio key", `AIza${SENTINEL}`],
+    ["a Groq key", `gsk_${SENTINEL}`],
+    ["an Anthropic key", `sk-ant-api03-${SENTINEL}`],
+    ["an xAI key", `xai-${SENTINEL}`],
+  ];
+
+  it("accepts an OpenAI-shaped key at the OpenAI default — the tested-by-config OpenAI example", () => {
+    const config = readProviderConfig({
+      OPENAI_API_KEY: REAL_KEY,
+      AI_INTEGRATIONS_OPENAI_BASE_URL: DEFAULT_OPENAI_BASE_URL,
+    });
+    expect(config.ok).toBe(true);
+    if (config.ok) expect(config.baseUrl).toBe(DEFAULT_OPENAI_BASE_URL);
+  });
+
+  it("refuses every clearly-other-provider key at the OpenAI default", () => {
+    for (const [, value] of FOREIGN_KEYS) {
+      const config = readProviderConfig({
+        OPENAI_API_KEY: value,
+        AI_INTEGRATIONS_OPENAI_BASE_URL: DEFAULT_OPENAI_BASE_URL,
+      });
+      expect(config.ok).toBe(false);
+    }
+  });
+
+  it.each(FOREIGN_KEYS)(
+    "refuses %s at the OpenAI default with the " +
+      "wrong-provider message and no key material",
+    (_label, value) => {
+      // Explicit default and unset (unset means "the SDK default = OpenAI").
+      for (const env of [
+        { OPENAI_API_KEY: value, AI_INTEGRATIONS_OPENAI_BASE_URL: DEFAULT_OPENAI_BASE_URL },
+        { OPENAI_API_KEY: value },
+        // The base-URL alias goes through the same rule.
+        { OPENAI_API_KEY: value, OPENAI_BASE_URL: DEFAULT_OPENAI_BASE_URL },
+      ]) {
+        const config = readProviderConfig(env);
+        expect(config.ok).toBe(false);
+        if (config.ok) continue;
+        expect(config.variable).toBe("OPENAI_API_KEY");
+        expect(config.message).toContain("OPENAI_API_KEY");
+        expect(config.message).toContain("does not look like an OpenAI key");
+        expect(config.message).toContain('start with "sk-"');
+        expect(config.message).toContain("OPENAI_BASE_URL");
+        expect(config.message).toContain("model variables");
+        expect(config.message).toContain('"Choosing an AI provider"');
+        expect(config.message).toContain("README");
+        // Never any part of the value: not the value, not its tail, and not
+        // even the fixed foreign prefixes the detection matched on.
+        expect(config.message).not.toContain(value);
+        expect(config.message).not.toContain(SENTINEL);
+        expect(config.message).not.toContain(SENTINEL.slice(0, 8));
+        for (const prefix of FOREIGN_PROVIDER_PREFIXES) {
+          expect(config.message).not.toContain(prefix);
+        }
+      }
+    },
+  );
+
+  it("also refuses an unrecognised non-sk key at the OpenAI default", () => {
+    const value = "test-key-not-openai-shaped";
+    const config = readProviderConfig({
+      OPENAI_API_KEY: value,
+      AI_INTEGRATIONS_OPENAI_BASE_URL: DEFAULT_OPENAI_BASE_URL,
+    });
+
+    expect(config.ok).toBe(false);
+    if (!config.ok) {
+      expect(config.message).toContain('does not start with "sk-"');
+      expect(config.message).toContain(
+        "base URL points at OpenAI (or is unset)",
+      );
+      expect(config.message).toContain('"Choosing an AI provider"');
+      expect(config.message).not.toContain(value);
+    }
+  });
+
+  it("skips the shape rule for any other base URL — every provider has its own key format", () => {
+    const combinations: Array<[key: string, base: string]> = [
+      [`AQ.${SENTINEL}`, GOOGLE_COMPAT_BASE],
+      [`AIza${SENTINEL}`, GOOGLE_COMPAT_BASE],
+      [`gsk_${SENTINEL}`, GROQ_BASE],
+      ["any-proxy-key-without-a-known-prefix", "https://proxy.internal/v1"],
+    ];
+    for (const [key, base] of combinations) {
+      const config = readProviderConfig({
+        OPENAI_API_KEY: key,
+        AI_INTEGRATIONS_OPENAI_BASE_URL: base,
+      });
+      expect(config.ok).toBe(true);
+    }
+  });
+
+  it("accepts the Google Gemini example exactly as documented (tested-by-config)", () => {
+    const config = readProviderConfig({
+      OPENAI_API_KEY: `AIza${SENTINEL}`,
+      AI_INTEGRATIONS_OPENAI_BASE_URL: GOOGLE_COMPAT_BASE,
+    });
+    expect(config.ok).toBe(true);
+    if (config.ok) expect(config.baseUrl).toBe(GOOGLE_COMPAT_BASE);
+  });
+
+  it("honours the OPENAI_BASE_URL alias for the configured value", () => {
+    const config = readProviderConfig({
+      OPENAI_API_KEY: REAL_KEY,
+      OPENAI_BASE_URL: DEFAULT_OPENAI_BASE_URL,
+    });
+    expect(config.ok).toBe(true);
+    if (config.ok) expect(config.baseUrl).toBe(DEFAULT_OPENAI_BASE_URL);
+  });
+
+  it("orders placeholder detection before the shape rule", () => {
+    const config = readProviderConfig({
+      OPENAI_API_KEY: "replace-with-your-key",
+      // No base URL at all: the placeholder message must win, not the shape one.
+    });
+    expect(config.ok).toBe(false);
+    if (!config.ok) expect(config.message).toContain("placeholder");
+  });
+});
+
+describe("provider diagnostics helpers (BUG-021)", () => {
+  it("classifies key prefixes with fixed literals only", () => {
+    expect(looksLikeOpenaiKey("sk-proj-abcdef")).toBe(true);
+    expect(looksLikeOpenaiKey("sk-abcdef")).toBe(true);
+    expect(looksLikeOpenaiKey("sk-ant-api03-x")).toBe(false);
+    expect(looksLikeOpenaiKey("AQ.x")).toBe(false);
+    expect(looksLikeOpenaiKey("test-key")).toBe(false);
+
+    expect(isForeignProviderKey("AIzaSyExample")).toBe(true);
+    expect(isForeignProviderKey("gsk_abc")).toBe(true);
+    expect(isForeignProviderKey("sk-ant-api03")).toBe(true);
+    expect(isForeignProviderKey("sk-proj-abc")).toBe(false);
+    expect(isForeignProviderKey("anything-else")).toBe(false);
+
+    expect(keyPrefixClass("sk-proj-abcdef")).toBe("key starts with sk-");
+    expect(keyPrefixClass("sk-ant-api03-abc")).toBe("key starts with sk-ant-");
+    expect(keyPrefixClass("gsk_abcdef")).toBe("key starts with gsk_");
+    expect(keyPrefixClass("AIzaSyabcdef")).toBe("key starts with AIza");
+    expect(keyPrefixClass("AQ.abcdef")).toBe("key starts with AQ.");
+    expect(keyPrefixClass("xai-abcdef")).toBe("key starts with xai-");
+    expect(keyPrefixClass("custom-warehouse-key")).toBe(
+      "key does not start with sk-",
+    );
+    expect(keyPrefixClass("")).toBe("key does not start with sk-");
+    // The classification never carries characters beyond the fixed prefix.
+    expect(keyPrefixClass("gsk_SUPERSECRETVALUE")).toBe("key starts with gsk_");
+  });
+
+  it("resolves the per-feature model variables with the historic defaults", () => {
+    expect(chatModel({})).toBe(DEFAULT_CHAT_MODEL);
+    expect(imageModel({})).toBe(DEFAULT_IMAGE_MODEL);
+    expect(chatModel({ OPENAI_CHAT_MODEL: " gemini-2.0-flash " })).toBe(
+      "gemini-2.0-flash",
+    );
+    expect(imageModel({ OPENAI_IMAGE_MODEL: " gemini-image-generation " })).toBe(
+      "gemini-image-generation",
+    );
+    // Blank values fall back instead of sending an empty model name.
+    expect(chatModel({ OPENAI_CHAT_MODEL: "   " })).toBe(DEFAULT_CHAT_MODEL);
+  });
+
+  it("reports the provider host, defaulting to OpenAI when unset", () => {
+    expect(providerHost({})).toBe("api.openai.com");
+    expect(
+      providerHost({
+        AI_INTEGRATIONS_OPENAI_BASE_URL:
+          "https://generativelanguage.googleapis.com/v1beta/openai/",
+      }),
+    ).toBe("generativelanguage.googleapis.com");
+    expect(providerHost({ OPENAI_BASE_URL: "https://api.groq.com/openai/v1" })).toBe(
+      "api.groq.com",
+    );
+    expect(providerHost({ AI_INTEGRATIONS_OPENAI_BASE_URL: "nope" })).toBe(
+      "(invalid base URL)",
+    );
+  });
+
+  it("gates the image feature only on known-unsupported providers", () => {
+    expect(
+      providerSupportsImages({
+        AI_INTEGRATIONS_OPENAI_BASE_URL:
+          "https://generativelanguage.googleapis.com/v1beta/openai/",
+      }),
+    ).toBe(false);
+    // Unset (OpenAI default), Groq and anything custom: attempt the call —
+    // untested combinations are discovered at call time (404/405/501).
+    expect(providerSupportsImages({})).toBe(true);
+    expect(providerSupportsImages({ OPENAI_BASE_URL: "https://api.groq.com/openai/v1" })).toBe(
+      true,
+    );
+    expect(
+      providerSupportsImages({ AI_INTEGRATIONS_OPENAI_BASE_URL: "https://proxy.internal/v1" }),
+    ).toBe(true);
+  });
+
+  it("keeps the feature copy a fixed, friendly string", () => {
+    expect(IMAGE_GENERATION_UNAVAILABLE_MESSAGE).toBe(
+      "Image generation is not available with the current AI provider.",
+    );
   });
 });

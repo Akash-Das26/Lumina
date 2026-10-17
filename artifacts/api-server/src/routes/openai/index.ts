@@ -16,6 +16,12 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../../lib/session";
 import { detectImageMediaType, imageExtension } from "../../lib/image-media";
+import {
+  chatModel,
+  imageModel,
+  providerSupportsImages,
+  IMAGE_GENERATION_UNAVAILABLE_MESSAGE,
+} from "../../lib/provider-config";
 import { chatLimiter } from "../../middleware/rate-limit";
 import { sendValidationError } from "../../lib/validation";
 import { logProviderError, sendProviderError } from "../../lib/provider-errors";
@@ -419,7 +425,10 @@ router.post(
     try {
       const stream = await openai.chat.completions.create(
         {
-          model: "openai/gpt-oss-120b",
+          // Per-feature model variable (BUG-021): defaults to the historic
+          // value; set OPENAI_CHAT_MODEL to whatever chat model your provider
+          // serves (README → "Choosing an AI provider").
+          model: chatModel(),
           max_tokens: 4096,
           messages: chatMessages,
           stream: true,
@@ -503,6 +512,15 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
   };
   const size = sizeMap[requestedSize ?? "1024x1024"] ?? "1024x1024";
 
+  // BUG-021, capability honesty: when the configured base URL is a provider
+  // known not to serve the images API (Google's OpenAI-compat endpoint), say
+  // so for THIS feature only, before spending a call — the other tabs share
+  // the same key and keep working, because nothing else reads this gate.
+  if (!providerSupportsImages()) {
+    res.status(501).json({ error: IMAGE_GENERATION_UNAVAILABLE_MESSAGE });
+    return;
+  }
+
   if (replaceMessageId !== undefined && conversationId === undefined) {
     res.status(400).json({ error: "replaceMessageId requires conversationId." });
     return;
@@ -537,11 +555,25 @@ router.post("/openai/generate-image", async (req, res): Promise<void> => {
 
   let buffer: Buffer;
   try {
-    buffer = await generateImageBuffer(prompt, size);
+    buffer = await generateImageBuffer(prompt, size, imageModel());
   } catch (error) {
     // BUG-014: Artist mode reports provider failures exactly like Chat — same
     // classification, same safe copy, no provider text and no key fragments.
-    sendProviderError(res, error, { reqId: String(req.id), route: "image" });
+    const mapped = logProviderError(error, { reqId: String(req.id), route: "image" });
+    // BUG-021, capability honesty at call time: a provider that does not
+    // implement the images API answers 404 (unknown path), 405 (wrong method)
+    // or 501 (not implemented). Answer with the friendly feature message so a
+    // known-unsupported setup reads clearly, while every other feature keeps
+    // its normal mapping.
+    const unsupported =
+      mapped.providerStatus === 404 ||
+      mapped.providerStatus === 405 ||
+      mapped.providerStatus === 501;
+    res
+      .status(unsupported ? 501 : mapped.status)
+      .json({
+        error: unsupported ? IMAGE_GENERATION_UNAVAILABLE_MESSAGE : mapped.message,
+      });
     return;
   }
   // Detect the bytes' real format (Audit 2 F-04): the provider is configured

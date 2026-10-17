@@ -52,6 +52,36 @@ http
     req.on('data', (c) => (body += c));
     req.on('end', () => {
       const url = req.url || '';
+      if (url.includes('/models')) {
+        // GET /models — the small authenticated request pnpm check:provider
+        // makes (BUG-021). STUB_MODELS_STATUS picks the answer: 200 (default)
+        // returns a tiny model list, anything else returns the same 401 shape
+        // the real provider sends.
+        const status = Number(process.env.STUB_MODELS_STATUS || 200);
+        if (status !== 200) {
+          res.writeHead(status, { 'content-type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              error: {
+                message:
+                  'Incorrect API key provided: replace-*********-key. You can find your API key at https://platform.openai.com/account/api-keys',
+                type: 'invalid_request_error',
+                code: 'invalid_api_key',
+                param: null,
+              },
+            }),
+          );
+          return;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            object: 'list',
+            data: [{ id: 'stub-model', object: 'model', owned_by: 'stub' }],
+          }),
+        );
+        return;
+      }
       if (url.includes('/images/generations')) {
         let prompt = '';
         try {

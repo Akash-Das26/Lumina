@@ -195,3 +195,91 @@ describe("redactSecrets (BUG-014 additions)", () => {
     }
   });
 });
+
+describe("auth log hint (BUG-021)", () => {
+  /** Sentinel tail: would be a leak if any of it reached the log record. */
+  const SENTINEL = "FakeLogHintSentinel9876543210";
+
+  it.each([401, 403])(
+    "on a provider %i, logs host, key prefix class, model and the README pointer — never the key",
+    (status) => {
+      const errorLog = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
+      const key = `gsk_${SENTINEL}`;
+      vi.stubEnv("OPENAI_API_KEY", key);
+      vi.stubEnv("AI_INTEGRATIONS_OPENAI_BASE_URL", "https://api.groq.com/openai/v1");
+      try {
+        logProviderError(
+          Object.assign(new Error(`401 Incorrect API key provided: ${key}`), {
+            status,
+            code: "invalid_api_key",
+          }),
+          { reqId: "req-hint", route: "chat", mode: "chat" },
+        );
+
+        expect(errorLog).toHaveBeenCalledTimes(1);
+        const [record] = errorLog.mock.calls[0] as unknown as [Record<string, unknown>];
+        expect(record).toMatchObject({
+          kind: "auth",
+          providerHost: "api.groq.com",
+          // The fixed prefix class only — gsk_ and nothing after it.
+          keyHint: "key starts with gsk_",
+          model: "openai/gpt-oss-120b",
+          hint: "See README → Troubleshooting local setup",
+        });
+
+        const json = JSON.stringify(record);
+        expect(json).not.toContain(key);
+        expect(json).not.toContain(SENTINEL);
+        expect(json).not.toContain(SENTINEL.slice(0, 8));
+        expect(json).not.toContain("9876543210");
+      } finally {
+        vi.unstubAllEnvs();
+        errorLog.mockRestore();
+      }
+    },
+  );
+
+  it("reports the image model and host when the failing route is the image route", () => {
+    const errorLog = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
+    vi.stubEnv("OPENAI_API_KEY", `AIza${SENTINEL}`);
+    vi.stubEnv(
+      "AI_INTEGRATIONS_OPENAI_BASE_URL",
+      "https://generativelanguage.googleapis.com/v1beta/openai/",
+    );
+    vi.stubEnv("OPENAI_IMAGE_MODEL", "gemini-image-fixture");
+    try {
+      logProviderError(Object.assign(new Error("401 unauthorized"), { status: 401 }), {
+        reqId: "req-img",
+        route: "image",
+      });
+      const [record] = errorLog.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(record).toMatchObject({
+        kind: "auth",
+        providerHost: "generativelanguage.googleapis.com",
+        keyHint: "key starts with AIza",
+        model: "gemini-image-fixture",
+      });
+      expect(JSON.stringify(record)).not.toContain(SENTINEL);
+    } finally {
+      vi.unstubAllEnvs();
+      errorLog.mockRestore();
+    }
+  });
+
+  it("adds no auth hint for non-auth failures", () => {
+    const errorLog = vi.spyOn(logger, "error").mockImplementation(() => undefined as never);
+    try {
+      logProviderError(Object.assign(new Error("429 slow down"), { status: 429 }), {
+        reqId: "req-429",
+        route: "chat",
+      });
+      const [record] = errorLog.mock.calls[0] as unknown as [Record<string, unknown>];
+      expect(record).not.toHaveProperty("providerHost");
+      expect(record).not.toHaveProperty("keyHint");
+      expect(record).not.toHaveProperty("model");
+      expect(record).not.toHaveProperty("hint");
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+});

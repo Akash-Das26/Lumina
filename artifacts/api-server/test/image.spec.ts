@@ -6,7 +6,7 @@
 // message_images table and the assistant message content holds only a short
 // reference (`![Generated image](/api/openai/images/<id>.<ext>)`) instead of a
 // multi-megabyte base64 data URI.
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 process.env.DATABASE_URL ??= "postgresql://test:test@127.0.0.1:5432/test";
 process.env.OPENAI_API_KEY ??= "test-key";
@@ -69,6 +69,7 @@ const { startTestServer } = await import("./helpers/server");
 
 const { default: app } = await import("../src/app");
 const { createSessionToken } = await import("../src/lib/session");
+const { openai } = await import("@workspace/integrations-openai-ai-server");
 const { db } = await import("@workspace/db");
 
 type TestServer = Awaited<ReturnType<typeof startTestServer>>;
@@ -235,5 +236,81 @@ describe("POST /openai/generate-image", () => {
 
     expect(res.status).toBe(400);
     expect(generateImageBufferMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("capability honesty for Artist (BUG-021)", () => {
+  const GOOGLE_COMPAT_BASE =
+    "https://generativelanguage.googleapis.com/v1beta/openai/";
+  const FRIENDLY = {
+    error: "Image generation is not available with the current AI provider.",
+  };
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("answers the friendly message without spending a call when the configured provider has no images API", async () => {
+    vi.stubEnv("AI_INTEGRATIONS_OPENAI_BASE_URL", GOOGLE_COMPAT_BASE);
+
+    const res = await generate({ prompt: "a red fox", conversationId: 1 });
+
+    expect(res.status).toBe(501);
+    expect(JSON.parse(res.body)).toEqual(FRIENDLY);
+    expect(generateImageBufferMock).not.toHaveBeenCalled();
+    expect(insertValuesMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the other tabs working while images are unavailable", async () => {
+    vi.stubEnv("AI_INTEGRATIONS_OPENAI_BASE_URL", GOOGLE_COMPAT_BASE);
+    vi.mocked(openai.chat.completions.create).mockImplementationOnce(async () => ({
+      async *[Symbol.asyncIterator]() {
+        yield { choices: [{ delta: { content: "still works" } }] };
+      },
+    }));
+
+    const res = await server.request("POST", "/api/openai/conversations/1/messages", {
+      headers: {
+        "content-type": "application/json",
+        cookie: `lumina_session=${createSessionToken(1)}`,
+      },
+      body: JSON.stringify({ content: "hello", mode: "chat" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("still works");
+  });
+
+  it.each([404, 405, 501])(
+    "maps a provider %i on the image route to the friendly message at call time",
+    async (providerStatus) => {
+      // Providers outside the known list (Groq, proxies, …) are attempted and
+      // discovered here: 'endpoint not implemented' must not read as a generic
+      // failure, and provider text must never surface.
+      generateImageBufferMock.mockRejectedValue(
+        Object.assign(new Error(`provider has no images endpoint: ${providerStatus}`), {
+          status: providerStatus,
+        }),
+      );
+
+      const res = await generate({ prompt: "a red fox" });
+
+      expect(res.status).toBe(501);
+      expect(JSON.parse(res.body)).toEqual(FRIENDLY);
+      expect(res.body).not.toContain("images endpoint");
+    },
+  );
+
+  it("keeps the normal failure mapping for provider failures that are not capability problems", async () => {
+    generateImageBufferMock.mockRejectedValue(
+      Object.assign(new Error("upstream exploded"), { status: 500 }),
+    );
+
+    const res = await generate({ prompt: "a red fox" });
+
+    expect(res.status).toBe(502);
+    expect(JSON.parse(res.body)).toEqual({
+      error: "The AI service is temporarily unavailable. Please try again.",
+    });
   });
 });
