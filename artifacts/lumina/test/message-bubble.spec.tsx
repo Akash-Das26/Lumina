@@ -25,12 +25,49 @@ describe('extractImageSrc', () => {
       '/api/openai/images/12.webp',
     );
   });
+
+  // BUG-017 / Audit 4 A3: the bubble path must apply the same allowlist as the
+  // generic markdown renderer — data:image/* and the same-origin image route.
+  it('rejects a remote http(s) image URL (allowlist only, no proxy)', () => {
+    expect(extractImageSrc('![tracking](https://evil.example/pixel.png)')).toBeUndefined();
+    expect(extractImageSrc('![tracking](http://evil.example/pixel.png)')).toBeUndefined();
+  });
+
+  it('rejects javascript: and non-image data: schemes', () => {
+    expect(extractImageSrc('![x](javascript:alert(1))')).toBeUndefined();
+    expect(extractImageSrc('![x](JaVaScRiPt:alert(1))')).toBeUndefined();
+    expect(extractImageSrc('![x](data:text/html;base64,AAAA)')).toBeUndefined();
+  });
+
+  it('rejects a lookalike path outside the image route', () => {
+    expect(extractImageSrc('![x](/api/other/images/12.png)')).toBeUndefined();
+    expect(extractImageSrc('![x](/api/openai/images/12.png/../../evil)')).toBeUndefined();
+  });
 });
 
 describe('MessageBubble', () => {
   it('renders plain assistant text through the markdown renderer', () => {
     render(<MessageBubble role="assistant" content="hello there" />);
     expect(screen.getByText('hello there')).toBeInTheDocument();
+  });
+
+  // BUG-017 / Audit 4 A3: an image line whose scheme is not allowed must fall
+  // back to plain text — no <img>, and therefore no lightbox/download control.
+  it('does not render an <img> for a remote or unsafe image URL', () => {
+    const { rerender } = render(
+      <MessageBubble role="assistant" content="![pixel](https://evil.example/p.png)" />,
+    );
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-open-image-lightbox')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-download-image')).not.toBeInTheDocument();
+    expect(screen.getByText(/pixel/)).toBeInTheDocument();
+
+    rerender(<MessageBubble role="assistant" content="![x](javascript:alert(1))" />);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('button-open-image-lightbox')).not.toBeInTheDocument();
+
+    rerender(<MessageBubble role="assistant" content="![x](data:text/html;base64,AAAA)" />);
+    expect(screen.queryByRole('img')).not.toBeInTheDocument();
   });
 
   it('shows the generating state with the given label and no image', () => {

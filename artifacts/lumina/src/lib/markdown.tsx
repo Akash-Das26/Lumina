@@ -1,3 +1,23 @@
+/**
+ * The single allowlist for image sources rendered inside a message
+ * (Audit 3 F-12, BUG-017 / Audit 4 A3).
+ *
+ * Allowed: in-session generated images (`data:image/*`, including the
+ * optimistic Artist URI) and the same-origin, owner-scoped image route
+ * (`/api/openai/images/<id>.<ext>`). Everything else — `javascript:`,
+ * non-image `data:` payloads, remote http(s) images — stays plain text.
+ *
+ * Remote images are deliberately *not* loaded (no proxy either): fetching a
+ * third-party image would leak the reader's IP/referer to that host (tracking
+ * pixel, mixed content), and an image proxy would add SSRF surface plus a
+ * hosting dependency for little gain. Model output that cites an image URL
+ * still shows the URL as readable text.
+ */
+export function isAllowedImageSrc(src: string): boolean {
+  if (src.startsWith('data:image/')) return true;
+  return /^\/api\/openai\/images\/\d+(\.\w+)?$/.test(src);
+}
+
 export function renderMarkdown(content: string) {
   const lines = content.split('\n');
   const result: React.ReactNode[] = [];
@@ -24,11 +44,7 @@ export function renderMarkdown(content: string) {
       const imageMatch = line.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
       if (imageMatch) {
         const [, alt, src] = imageMatch;
-        // Audit 3 F-12: only render data: image URIs found in assistant output.
-        // External URLs (e.g. tracking pixels, mixed content) stay as plain
-        // text. Audit 3 F-03: server-held images are referenced by their own
-        // same-origin route, which is likewise trusted.
-        if (src.startsWith('data:image/') || /^\/api\/openai\/images\/\d+(\.\w+)?$/.test(src)) {
+        if (isAllowedImageSrc(src)) {
           result.push(
             <img
               key={idx}

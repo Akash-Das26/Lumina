@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { getComparison, comparisons } from '@/lib/comparisons';
 import { useSeo } from '@/lib/seo';
+import { isHttpUrl } from '@/lib/urls';
 
 function BrandMark({ competitor = false }: { competitor?: boolean }) {
   return competitor ? (
@@ -94,7 +95,7 @@ export default function ComparisonPage() {
         </section>
 
         <section className="mx-auto max-w-5xl px-6 py-16">
-          <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-accent/[0.08] p-8 md:p-12"><p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Our verdict</p><h2 className="mt-3 text-3xl font-bold">Which one should you choose?</h2><p className="mt-5 max-w-3xl text-lg leading-relaxed text-muted-foreground">{comparison.verdict}</p><div className="mt-8 flex flex-wrap gap-3"><Link href="/chat"><Button size="lg">Try Lumina free <ArrowRight className="ml-2 h-4 w-4" /></Button></Link><a href={comparison.website} target="_blank" rel="noreferrer"><Button size="lg" variant="outline">Visit {comparison.name} <ExternalLink className="ml-2 h-4 w-4" /></Button></a></div><p className="mt-5 text-xs text-muted-foreground">Product details can change. Review the linked provider page for the latest terms.</p></div>
+          <div className="rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-accent/[0.08] p-8 md:p-12"><p className="text-sm font-semibold uppercase tracking-[0.18em] text-primary">Our verdict</p><h2 className="mt-3 text-3xl font-bold">Which one should you choose?</h2><p className="mt-5 max-w-3xl text-lg leading-relaxed text-muted-foreground">{comparison.verdict}</p><div className="mt-8 flex flex-wrap gap-3"><Link href="/chat"><Button size="lg">Try Lumina free <ArrowRight className="ml-2 h-4 w-4" /></Button></Link><a href={isHttpUrl(comparison.website) ? comparison.website : undefined} target="_blank" rel="noopener noreferrer"><Button size="lg" variant="outline">Visit {comparison.name} <ExternalLink className="ml-2 h-4 w-4" /></Button></a></div><p className="mt-5 text-xs text-muted-foreground">Product details can change. Review the linked provider page for the latest terms.</p></div>
         </section>
 
         <section className="border-t border-border px-6 py-16">
@@ -102,7 +103,7 @@ export default function ComparisonPage() {
         </section>
 
         <section className="bg-muted/30 px-6 py-16"><div className="mx-auto max-w-5xl"><div className="mb-8 flex items-center gap-3"><FileText className="h-5 w-5 text-primary" /><h2 className="text-3xl font-bold">More AI comparisons</h2></div><div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{comparisons.filter((item) => item.slug !== comparison.slug).slice(0, 6).map((item) => <Link key={item.slug} href={`/compare/${item.slug}`} className="group rounded-2xl border border-border bg-card p-5 transition hover:-translate-y-0.5 hover:border-primary/40"><p className="font-semibold">Lumina vs {item.name}</p><p className="mt-2 line-clamp-2 text-sm text-muted-foreground">{item.shortDescription}</p><span className="mt-4 flex items-center gap-1 text-sm font-medium text-primary">Read comparison <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-1" /></span></Link>)}</div></div></section>
-        <div className="mx-auto max-w-5xl px-6 py-8"><a href={comparison.sourceUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><ExternalLink className="h-3.5 w-3.5" /> Reference: {comparison.sourceLabel}</a></div>
+        <div className="mx-auto max-w-5xl px-6 py-8"><a href={isHttpUrl(comparison.sourceUrl) ? comparison.sourceUrl : undefined} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground"><ExternalLink className="h-3.5 w-3.5" /> Reference: {comparison.sourceLabel}</a></div>
       </main>
     </div>
   );

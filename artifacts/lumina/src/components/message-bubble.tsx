@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { renderMarkdown } from '@/lib/markdown';
+import { renderMarkdown, isAllowedImageSrc } from '@/lib/markdown';
 import { imageExtension } from '@/lib/image';
 import { AlertTriangle, Bot, User, Loader2, Download, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,10 +21,13 @@ interface MessageBubbleProps {
 // base64 data URI, e.g. `![Generated image](data:image/png;base64,...)`.
 const IMAGE_MARKDOWN = /^!\[[^\]]*\]\(([^)]+)\)$/m;
 
-/** The src of a generated-image message, or undefined for other content. */
+/** The src of a generated-image message, or undefined for other content.
+ *  BUG-017 / Audit 4 A3: the same allowlist as the markdown renderer, so a
+ *  crafted `![x](scheme:…)` line cannot bypass it through this path. */
 export function extractImageSrc(content: string): string | undefined {
   if (!content.startsWith('![')) return undefined;
-  return content.match(IMAGE_MARKDOWN)?.[1];
+  const src = content.match(IMAGE_MARKDOWN)?.[1];
+  return src && isAllowedImageSrc(src) ? src : undefined;
 }
 
 export function MessageBubble({

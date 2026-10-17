@@ -153,3 +153,54 @@ One entry per deep audit. Append new audits below.
   - **F-10 (Info) — scripts/ devDependencies duplicate root/workspace deps.** *Not applicable (Session 18):* scripts/package.json declares `@types/node` and `tsx` via `catalog:` refs — the workspace's single-source-of-truth dedup mechanism, not duplication.
 - **Summary:** 0 Critical, 0 High, 3 Medium, 3 Low, 3 Info. No dependency changes made for this audit; `pnpm audit` advisories unchanged (1 high braces ≤3.0.3, 2 moderate vitest/@vitest/mocker, 1 low esbuild — pre-existing).
 - **Update (Session 18, 2026-10-05):** F-01/F-05 fixed and committed (c93fc6a); F-02 fixed and committed (415d1fb) — note the initial Promise.all rewrite would have turned a single-provider outage into a 502; the committed fix uses Promise.allSettled to preserve the old failure isolation, caught by the new spec before commit.
+
+---
+
+### Audit 4 - 2026-10-16
+- **Scope:** Full repository, with extra attention to: (1) verifying BUG-012…BUG-016 actually hold, (2) the unknown `/compare/:slug` route, (3) file uploads (size limits, content validation, HTML/XSS), (4) the Export feature and conversation storage ownership, (5) session/auth handling (cookie flags, expiry, logout, password hashing, rate limiting), (6) the new CI workflow and ESLint config. Read-only audit: no source changes were made in the audit itself.
+- **State audited:** branch `fix/ci-lint-5xx` @ `253e0e0` (main was not merged at the time; local/origin `main` still predates BUG-012…016), working tree clean except the pre-existing untracked `scripts/browser/decode-png.js`.
+- **Method / commands run:** full source read of routes/{auth,openai/index,health}, lib/{session,password,validation,provider-config,provider-errors,safe-error,database}, middleware/{rate-limit,error-handler}, app.ts, index.ts, lib/db, markdown/message-bubble/chat-input/chat-conversation/comparison/comparisons, eslint.config.mjs, .github/workflows/browser-tests.yml; **live probe** against the real built API + throwaway PostgreSQL 18.6 + a stub provider answering upstream 503 (24/25 checks — the failure became finding A1, confirmed by a second focused probe); marketing pages loaded in real headless Chrome with no API process; prior runs at the same tree: `pnpm test` 316 passed + 4 skipped (exit 0), `pnpm typecheck` (exit 0), `pnpm lint` (exit 0, 0 errors / 4 warnings), `pnpm verify:flow` (exit 0), CI database recipe reproduced locally (320 passed / 0 skipped).
+- **Findings table (sorted by priority):**
+
+| ID | Sev | Area | Location | Title | Status |
+|---|---|---|---|---|---|
+| A1 | Low | Security/auth | api-server/src/middleware/rate-limit.ts (`authLimiter`) | Login limiter comment overstates protection: after 10 failures the whole IP is locked out for 15 min, correct password included | Open |
+| A2 | Medium | Correctness/SEO | lumina/src/pages/comparison.tsx:18 | Unknown `/compare/:slug` renders the last comparison instead of a 404 | Open |
+| A3 | Low | Security/XSS | lumina/src/components/message-bubble.tsx (`extractImageSrc`) | Image-src allowlist bypass: any scheme in `![x](src)` renders as `<img>`/download | **Fixed** (Session 25, BUG-017) |
+| A4 | Low | Security/XSS | lumina/src/pages/chat-conversation.tsx:665 | Search-source links: no scheme check on `href`, rel missing `noopener` | **Fixed** (Session 26, BUG-018) |
+| A5 | Low | Security/session | api-server/src/lib/session.ts | Stateless tokens are not revocable (logout only clears the cookie; a copied token lives up to 30 days) | Open |
+| A6 | Low | Security/crypto | api-server/src/lib/password.ts | scrypt uses Node defaults (N=16384); OWASP prefers N≥2^17 or argon2id | Open |
+| A7 | Info | Security/auth | api-server/src/routes/auth.ts (login) | User enumeration by timing: unknown email skips `verifyPassword` | Open |
+| A8 | Info | Security/ops | api-server/src/{middleware/rate-limit.ts,routes/auth.ts} | `registerLimiter` counts invalid payloads; `AUTH_AUTO_PROVISION=1` adopts orphan conversations | Open |
+| A9 | Info | Uploads | lumina/src/components/chat-input.tsx; api-server route | No file-size guard: the whole file is read before truncating; server has no context cap (silent slice) | Open |
+| A10 | Info | Uploads | lumina/src/components/chat-input.tsx | Filename/file contents go verbatim into the model prompt (prompt-injection surface, inherent to the feature) | Open |
+| A11 | Info | CI | .github/workflows/browser-tests.yml | `cache-dependency-path` points at pnpm-workspace.yaml, so the cache key never follows the lockfile | Open |
+| A12 | Info | CI | .github/workflows/browser-tests.yml | `pnpm db:push` in CI is the interactive variant (a future destructive change could prompt) | Open |
+| A13 | Info | CI/ESLint | .github/workflows/browser-tests.yml; eslint.config.mjs | Lint fails only on errors (warnings can grow); `pnpm audit` is not in CI | Open |
+
+- **Detailed findings:**
+
+  **A1 (Low, Security/auth) — login limiter behavior vs. its comment.** Reproduced live: after 10 failed logins from one IP, a *correct* login is refused 429 for the rest of the 15-minute window (`skipSuccessfulRequests` cannot help — a rejected request never reaches the handler), and behind one proxy/NAT every user shares that lockout. The comment "an active user signing in repeatedly from the same address is never locked out — only credential guessing is throttled" is true only before the bucket fills. Recommended fix options at audit time: key on ip+email, shorten the window, or correct the comment. *Decision (Session 25): key failures by IP+email, fix the comment, document the lockout in README → BUG-020.*
+
+  **A2 (Medium, Correctness/SEO) — unknown `/compare/:slug` renders the first comparison.** `comparison.tsx:18` — `getComparison(slug) || comparisons[comparisons.length - 1]` — so any unknown slug answers a complete "Lumina vs Monica" page (own title/meta/og:url) instead of a not-found state: duplicate-content SEO, typos silently masked. Live-verified in headless Chrome. Recommended fix: render the existing NotFound page when `getComparison` misses → **BUG-021**.
+
+  **A3 (Low, Security/XSS) — image-src allowlist bypass.** `renderMarkdown` correctly restricts images to `data:image/*` or `/api/openai/images/<id>.<ext>`, but `message-bubble.tsx`'s `extractImageSrc` accepts *any* src for any message starting with `![`, so a crafted message renders an external `<img>` (tracking pixel / mixed content) and exposes it to the lightbox and the download link. No HTML execution path exists anywhere (`dangerouslySetInnerHTML` appears only in the unused `ui/chart.tsx` with static config colors). Decision on remote images: **allowlist only — no proxy**; remote http(s) images stay plain text (a proxy would add SSRF surface and hosting for little gain; loading them would leak the reader's IP to third parties) → BUG-017. *Fixed (Session 25):* shared `isAllowedImageSrc()` in `lib/markdown.tsx` now backs both paths (`data:image/*` + `/api/openai/images/<id>.<ext>`); 4 new tests failed first (4 failed / 15 passed), then the suite went 316 → 320 passed with typecheck and lint clean.
+
+  **A4 (Low, Security/XSS) — search-source links have no scheme check.** `chat-conversation.tsx:665` sets `href={source.url}` from Wikipedia/DuckDuckGo with `rel="noreferrer"` only; a poisoned upstream returning `javascript:…` would execute on click. Fix: allow only http(s), `rel="noopener noreferrer"`, non-http sources render unlinked → BUG-018. *Fixed (Session 26):* shared `isHttpUrl()` guard (`lib/urls.ts`) on every external href — search-source cards and the comparison page's two anchors — rejected sources render as the same card without a link; 4 of the 5 new tests failed first (search-source-links.spec ×3, comparison.spec ×2), suite 320 → 325 passed.
+
+  **A5 (Low, Security/session) — sessions are not revocable.** HMAC-signed `userId.expiresAt.sig` (SHA-256, timing-safe compare, 30-day TTL; tampered and expired tokens both verified live → 401), but logout only clears the cookie, so a copied token stays valid until expiry. *Deferred:* adding a server-side denylist means a session store and a schema change; acceptable for the current single-user-device threat model, documented here.
+
+  **A6 (Low, Security/crypto) — scrypt parameters.** Node defaults (N=16384, r=8, p=1), 16-byte random salt, 64-byte key, timing-safe compare — a solid baseline. OWASP's stronger bar is N≥2^17 or argon2id (neither is in Node's stdlib without a dependency). *Deferred:* raising N costs login CPU (~4×) for every existing hash unless a rehash-on-login migration is added.
+
+  **A7 (Info) — login timing.** An unknown email skips `verifyPassword` and answers faster, allowing enumeration by timing. *Deferred:* needs a dummy-hash path in the login handler (deliberate CPU burn per unknown email, which itself is a DoS lever unless bounded).
+
+  **A8 (Info) — register limiter counts invalid payloads; `AUTH_AUTO_PROVISION`.** The register bucket is IP-keyed and counts 400s (an attacker can only exhaust their own bucket; harmless behind correct `TRUST_PROXY_HOPS`). Auto-provision is opt-in (default off) and documented. *Won't Fix:* both behave as designed.
+
+  **A9 (Info, Uploads) — no file-size guard.** The client reads the whole file before slicing it to 24,000 chars (a multi-GB file stalls the tab), and the server slices `context` to 24,000 silently with no contract cap. Fix: 1 MB client limit checked *before* reading with a friendly inline error, and a server-side 50,000-character context cap returning a friendly 400 → BUG-019.
+
+  **A10 (Info) — prompt-injection surface.** Filename and file contents go verbatim into the model prompt; nothing is rendered from them (React text nodes are escaped) and this is inherent to "bring your own context". *Won't Fix:* by design.
+
+  **A11–A13 (Info, CI/ESLint).** `cache-dependency-path` should be `pnpm-lock.yaml` (pre-existing; content-addressed store makes a stale cache safe but useless); `db:push` could prompt on a future destructive migration (`push-force` exists for that); lint gates only on errors and `pnpm audit` is not in CI. *Deferred:* none blocks the safety net added in BUG-016; each is a one-line workflow tweak best done together with the next CI change.
+
+- **Summary:** 0 Critical, 1 Medium, 4 Low, 8 Info. Overall health: **good — the BUG-012…016 fixes all verified live**, ownership/export/session surfaces are solid (cross-user access denied in every direction, cookie flags, tamper/expiry, throttling), and the XSS surface is narrow by construction (no HTML rendering). The gaps are the items above.
+- **Follow-up (bug.md):** A3→BUG-017, A4→BUG-018, A9→BUG-019, A1→BUG-020, A2→BUG-021. A5–A8, A10–A13 are Low/Info: Deferred/Won't Fix with reasons as marked above.
